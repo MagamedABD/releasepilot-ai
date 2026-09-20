@@ -56,7 +56,7 @@ AI-агенту, который их объясняет, находит узко
 | Доп. функция 6 — файловое хранилище | импорт CSV/JSON с отчётом об ошибках | FR-41 |
 | AI-агент | Claude API, tool use, 10 инструментов, стриминг | [07-api-and-agent](07-api-and-agent.md) |
 | Документирование работы с AI | журнал ведётся в реальном времени, по этапам | [AI_JOURNAL](../AI_JOURNAL.md) |
-| Стек | Next.js 15 + TypeScript + Supabase (PostgreSQL) | [01-charter](01-charter.md), п. 7 |
+| Стек | Next.js 16 + TypeScript + Supabase (PostgreSQL) | [01-charter](01-charter.md), п. 7 |
 | Публичный деплой | Vercel, демо-инстанс на синтетических данных | [ADR-002](adr/ADR-002-deployment-modes.md) |
 | CI/CD | GitHub Actions: типы, линт, тесты, gitleaks, деплой | [ADR-003](adr/ADR-003-security-model.md), п. 10 |
 | История git | атомарные коммиты с обоснованием в теле сообщения | репозиторий |

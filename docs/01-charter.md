@@ -94,7 +94,7 @@ AI-агентов на каждом этапе — от генерации ид�
 
 | Слой | Технология | Почему |
 |---|---|---|
-| Frontend | Next.js 15 (App Router), TypeScript, Tailwind, shadcn/ui | рекомендован ТЗ курса, SSR + API в одном приложении |
+| Frontend | Next.js 16 (App Router), TypeScript, Tailwind, shadcn/ui | рекомендован ТЗ курса, SSR + API в одном приложении |
 | Backend | Next.js Route Handlers + Supabase | быстрый старт, не пишем auth руками |
 | БД | PostgreSQL (Supabase) | требование ТЗ курса |
 | Auth | Supabase Auth + OAuth2 (Google/GitHub) | закрывает обязательное требование и доп. функцию |

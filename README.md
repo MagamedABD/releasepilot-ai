@@ -44,7 +44,7 @@ AI Recommendation:
 
 ## Технологии
 
-Next.js 15 · TypeScript · Tailwind + shadcn/ui · Supabase (PostgreSQL, Auth,
+Next.js 16 · TypeScript · Tailwind + shadcn/ui · Supabase (PostgreSQL, Auth,
 Storage, RLS) · Claude API (tool use) · Vercel · GitHub Actions · Vitest ·
 Playwright
 
