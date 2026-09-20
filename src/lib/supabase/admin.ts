@@ -14,18 +14,13 @@
  * преградой остаётся внимательность автора каждого конкретного запроса.
  */
 
+import 'server-only';
+
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
 import { env } from '@/lib/env';
 import { serverEnv } from '@/lib/env.server';
 import type { Database } from '@/lib/database.types';
-
-if (typeof window !== 'undefined') {
-  throw new Error(
-    'Административный клиент Supabase импортирован в браузерном коде. ' +
-      'Это привело бы к утечке секретного ключа в бандл.',
-  );
-}
 
 export function createAdminClient() {
   return createSupabaseClient<Database>(
