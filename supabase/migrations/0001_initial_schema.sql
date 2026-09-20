@@ -35,29 +35,9 @@ begin
 end;
 $$;
 
--- Проверки принадлежности. SECURITY DEFINER — обходят RLS, иначе политика
--- на memberships, обращающаяся к memberships, зациклится.
-create or replace function public.is_org_member(p_org uuid)
-returns boolean language sql stable security definer set search_path = public as $$
-  select exists (
-    select 1 from memberships
-    where org_id = p_org and user_id = auth.uid()
-  );
-$$;
-
-create or replace function public.has_org_role(p_org uuid, p_roles app_role[])
-returns boolean language sql stable security definer set search_path = public as $$
-  select exists (
-    select 1 from memberships
-    where org_id = p_org and user_id = auth.uid() and role = any(p_roles)
-  );
-$$;
-
--- Сокращение: роли, которым разрешено изменять данные проекта
-create or replace function public.can_manage(p_org uuid)
-returns boolean language sql stable as $$
-  select public.has_org_role(p_org, array['owner','admin','manager']::app_role[]);
-$$;
+-- Функции проверки принадлежности объявлены ниже, сразу после memberships:
+-- тело sql-функции разбирается при создании, поэтому таблица уже должна
+-- существовать (см. журнал, запись 4.2).
 
 -- ============================================================================
 -- ОРГАНИЗАЦИИ И ПОЛЬЗОВАТЕЛИ
@@ -92,6 +72,30 @@ create table memberships (
 
 create index on memberships (user_id);
 create index on memberships (org_id);
+
+-- Проверки принадлежности. SECURITY DEFINER — обходят RLS, иначе политика
+-- на memberships, обращающаяся к memberships, зациклится.
+create or replace function public.is_org_member(p_org uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from memberships
+    where org_id = p_org and user_id = auth.uid()
+  );
+$$;
+
+create or replace function public.has_org_role(p_org uuid, p_roles app_role[])
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from memberships
+    where org_id = p_org and user_id = auth.uid() and role = any(p_roles)
+  );
+$$;
+
+-- Сокращение: роли, которым разрешено изменять данные проекта
+create or replace function public.can_manage(p_org uuid)
+returns boolean language sql stable as $$
+  select public.has_org_role(p_org, array['owner','admin','manager']::app_role[]);
+$$;
 
 -- ============================================================================
 -- КОМАНДЫ И ЁМКОСТЬ
