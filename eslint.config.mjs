@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Отчёт о покрытии — сгенерированный код, линтовать его нечего.
+    "coverage/**",
   ]),
 ]);
 
