@@ -1,0 +1,52 @@
+# Секреты — НИКОГДА не коммитим
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.credentials
+secrets/
+
+# Зависимости
+node_modules/
+.pnp
+.pnp.js
+
+# Сборка
+.next/
+out/
+build/
+dist/
+
+# Тесты и покрытие
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+blob-report/
+
+# Кэш инструментов
+.turbo/
+.eslintcache
+*.tsbuildinfo
+
+# Деплой
+.vercel
+
+# Локальные данные импорта (могут содержать корпоративные данные)
+/data/raw/
+/data/tracker-dump/
+*.dump.json
+
+# ОС и редакторы
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Логи
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
