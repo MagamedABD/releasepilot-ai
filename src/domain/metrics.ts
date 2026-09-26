@@ -12,12 +12,26 @@ import type {
   IsoDate,
   ReleaseSnapshot,
   Task,
+  TaskStatus,
   TeamLoad,
 } from './types';
 
+/**
+ * Тот же вопрос, но заданный одному статусу.
+ *
+ * Нужен отдельно от `isOpen`, потому что «закрыта ли задача» решается и
+ * там, где задачи целиком нет: при записи в базу на руках только статус
+ * из запроса. Заводить второе определение закрытости в слое API нельзя —
+ * тогда домен и запись разойдутся в понимании того, что такое закрытая
+ * задача, и расхождение обнаружится не сразу.
+ */
+export function isOpenStatus(status: TaskStatus): boolean {
+  return status !== 'done' && status !== 'cancelled';
+}
+
 /** Задача считается требующей работы, если она не завершена и не отменена. */
 export function isOpen(task: Task): boolean {
-  return task.status !== 'done' && task.status !== 'cancelled';
+  return isOpenStatus(task.status);
 }
 
 export function isBlocked(task: Task): boolean {

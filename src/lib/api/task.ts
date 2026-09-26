@@ -7,6 +7,7 @@
  * ломающим изменением API.
  */
 
+import { isOpenStatus } from '@/domain/metrics';
 import type { Database } from '@/lib/database.types';
 import type { TaskCreateInput, TaskUpdateInput } from '@/lib/validation/task';
 
@@ -74,7 +75,9 @@ export function toInsert(input: TaskCreateInput, orgId: string, now: string): In
     spent_h: input.spentH,
     team_id: input.teamId ?? null,
     assignee_id: input.assigneeId ?? null,
-    blocked_since: input.blocked ? now : null,
+    // Тот же инвариант, что и при изменении: сразу закрытая задача
+    // заблокированной не создаётся (объяснение — у `toUpdate`).
+    blocked_since: input.blocked && isOpenStatus(input.status) ? now : null,
     // Момент попадания в релиз ставится здесь же. От него движок считает
     // дрейф объёма (F6): задача, добавленная после старта релиза, —
     // это работа, которой при планировании не было.
@@ -124,6 +127,31 @@ export function toUpdate(input: TaskUpdateInput, current: TaskRow, now: string):
       patch.release_id = next;
       patch.added_to_release_at = next ? now : null;
     }
+  }
+
+  /*
+    Закрытая задача не бывает заблокированной, и отметку снимает сервер.
+
+    Без этого `PATCH { status: 'done' }` оставляет `blocked_since`
+    стоять, и в базе заводится задача одновременно готовая и
+    заблокированная. Движок такую считает незаблокированной (`isBlocked`
+    требует открытости), а выборка по `blocked_since is not null` —
+    заблокированной, и два ответа на один вопрос расходятся: в кокпите
+    «Блок: 4», а по ссылке с этого числа пять строк. Правило концепции
+    «каждое число — ссылка» держится ровно до первого такого расхождения.
+
+    Чинить это фильтром в каждой выборке значит чинить следствие: пока
+    инвариант не обеспечен при записи, его придётся обходить всюду, где
+    кто-то спросит про блокировки. Поэтому запрет стоит здесь.
+  */
+  const nextStatus = patch.status ?? current.status;
+  if (!isOpenStatus(nextStatus)) {
+    // Отметку снимаем, только если она есть. Записать `null` поверх
+    // `null` значит сделать патч непустым на пустом месте: маршрут
+    // перестанет видеть, что менять нечего, выполнит настоящий UPDATE
+    // и сдвинет `updated_at` — по запросу, который ничего не изменил.
+    if (current.blocked_since !== null) patch.blocked_since = null;
+    else delete patch.blocked_since;
   }
 
   return patch;
