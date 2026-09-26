@@ -98,30 +98,40 @@ function check(passed: boolean, what: string, detail = '') {
  * интересное — RPC, политики, журнал — осталось бы непроверенным:
  * скрипт сообщал бы «не пройдено» там, где всё правильно.
  */
-async function requireAutoconfirm(): Promise<boolean> {
+async function autoconfirmEnabled(): Promise<boolean> {
   const res = await fetch(`${URL_BASE}/auth/v1/settings`, { headers: { apikey: ANON } });
   const settings = (await res.json()) as { mailer_autoconfirm?: boolean };
+  return Boolean(settings.mailer_autoconfirm);
+}
 
-  if (settings.mailer_autoconfirm) return true;
-
-  console.error(
-    [
-      'В проекте включено подтверждение почты (mailer_autoconfirm: false).',
-      '',
-      'Проверка не запускается: письмо расходует лимит встроенного SMTP',
-      '(два в час), а сессия всё равно не выдаётся — проверять было бы нечего.',
-      '',
-      'Authentication → Sign In / Providers → Email → снять «Confirm email».',
-    ].join('\n'),
-  );
-  return false;
+/**
+ * Подтвердить почту за пользователя.
+ *
+ * Делает ровно то же, что переход по ссылке из письма: ставит отметку
+ * подтверждения. Нужно, чтобы проверка шла дальше и при включённом
+ * подтверждении — в корпоративном контуре оно будет включено, и странно
+ * иметь проверку, которая там не работает.
+ */
+async function confirmByAdmin(userId: string): Promise<boolean> {
+  const res = await fetch(`${URL_BASE}/auth/v1/admin/users/${userId}`, {
+    method: 'PUT',
+    headers: asAdmin,
+    body: JSON.stringify({ email_confirm: true }),
+  });
+  return res.ok;
 }
 
 async function main() {
-  if (!(await requireAutoconfirm())) {
-    failures += 1;
-    return;
-  }
+  const autoconfirm = await autoconfirmEnabled();
+  console.log(
+    autoconfirm
+      ? '0. Подтверждение почты выключено — сессия приходит сразу\n'
+      : [
+          '0. Подтверждение почты включено — письмо уйдёт, подтвердим админским API.',
+          '   Встроенный SMTP отдаёт два письма в час: чаще двух прогонов не выйдет.',
+          '',
+        ].join('\n'),
+  );
 
   const stamp = Date.now();
   const email = probeEmail(stamp);
@@ -148,12 +158,16 @@ async function main() {
     }
 
     userId = signUpBody.user?.id ?? signUpBody.id;
-    const immediateSession: string | undefined = signUpBody.access_token;
-    check(
-      Boolean(immediateSession),
-      'сессия выдана сразу',
-      immediateSession ? 'подтверждение почты выключено' : 'включено подтверждение почты',
-    );
+    check(Boolean(userId), 'пользователь заведён');
+
+    // Поведение сверяется с настройкой, а не с ожиданием «должна быть
+    // сессия». Иначе проверка ловила бы не ошибку, а конфигурацию.
+    const gotSession = Boolean(signUpBody.access_token);
+    check(gotSession === autoconfirm, 'выдача сессии соответствует настройке проекта');
+
+    if (!gotSession) {
+      check(await confirmByAdmin(userId), 'почта подтверждена (как переходом по ссылке)');
+    }
 
     console.log('2. Триггер handle_new_user');
     const prof = await fetch(`${URL_BASE}/rest/v1/profiles?id=eq.${userId}&select=id,full_name`, {
