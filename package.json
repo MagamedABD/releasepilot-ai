@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check:db": "tsx scripts/check-db-types.ts",
+    "smoke:auth": "tsx scripts/smoke-auth.ts",
     "metrics": "tsx scripts/show-metrics.ts"
   },
   "dependencies": {
