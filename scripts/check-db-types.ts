@@ -13,15 +13,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-function loadEnv(): Record<string, string> {
-  const text = readFileSync(resolve(import.meta.dirname, '..', '.env.local'), 'utf8');
-  const env: Record<string, string> = {};
-  for (const line of text.split('\n')) {
-    const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
-    if (m) env[m[1]] = m[2];
-  }
-  return env;
-}
+import { loadEnv, adminHeaders } from './lib/env';
 
 /**
  * Достаёт имена таблиц и колонок из блоков Row в database.types.ts.
@@ -131,13 +123,8 @@ type Spec = {
 
 async function main() {
   const env = loadEnv();
-  const url = env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error('В .env.local нет NEXT_PUBLIC_SUPABASE_URL или SUPABASE_SERVICE_ROLE_KEY');
 
-  const res = await fetch(`${url}/rest/v1/`, {
-    headers: { apikey: key, Authorization: `Bearer ${key}` },
-  });
+  const res = await fetch(`${env.url}/rest/v1/`, { headers: adminHeaders(env) });
   if (!res.ok) throw new Error(`Схема недоступна: HTTP ${res.status}`);
   const spec = (await res.json()) as Spec;
 

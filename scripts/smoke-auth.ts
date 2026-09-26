@@ -17,29 +17,12 @@
  * Запуск: npm run smoke:auth
  */
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-
-function loadEnv(): Record<string, string> {
-  const text = readFileSync(resolve(import.meta.dirname, '..', '.env.local'), 'utf8');
-  const env: Record<string, string> = {};
-  for (const line of text.split('\n')) {
-    const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
-    if (m) env[m[1]] = m[2];
-  }
-  return env;
-}
+import { loadEnv, adminHeaders } from './lib/env';
 
 const env = loadEnv();
-const URL_BASE = env.NEXT_PUBLIC_SUPABASE_URL;
-const ANON = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const SECRET = env.SUPABASE_SERVICE_ROLE_KEY;
-const SMOKE_EMAIL = env.SMOKE_EMAIL;
-
-if (!URL_BASE || !ANON || !SECRET) {
-  console.error('В .env.local не хватает ключей Supabase');
-  process.exit(1);
-}
+const URL_BASE = env.url;
+const ANON = env.anonKey;
+const SMOKE_EMAIL = env.raw.SMOKE_EMAIL;
 
 /**
  * Адрес для пробной регистрации берётся из .env.local, а не зашит в код.
@@ -79,7 +62,7 @@ function probeEmail(stamp: number): string {
 
 const json = { 'Content-Type': 'application/json' };
 const asAnon = { apikey: ANON, Authorization: `Bearer ${ANON}`, ...json };
-const asAdmin = { apikey: SECRET, Authorization: `Bearer ${SECRET}`, ...json };
+const asAdmin = adminHeaders(env);
 const asUser = (token: string) => ({ apikey: ANON, Authorization: `Bearer ${token}`, ...json });
 
 let failures = 0;
