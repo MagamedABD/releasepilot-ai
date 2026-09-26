@@ -5,7 +5,7 @@ import { PlannedDate, Readiness, RiskBadge, Stat, TeamLoadBars } from '@/compone
 import { calculateRelease } from '@/domain/risk';
 import { loadReleaseSnapshot } from '@/lib/data/snapshot';
 import { createClient } from '@/lib/supabase/server';
-import { RELEASE_STATUS, RISK_LEVEL, days, hours, plural, reasonText, reasonWeight } from '@/lib/ui/risk';
+import { RELEASE_STATUS, RISK_LEVEL, days, hours, plural, reasonHref, reasonText, reasonWeight } from '@/lib/ui/risk';
 import type { Task } from '@/domain/types';
 
 export const metadata = { title: 'Релиз — ReleasePilot AI' };
@@ -113,7 +113,7 @@ export default async function ReleasePage({ params }: PageProps<'/org/[slug]/rel
 
       {done ? null : (
         <>
-          <Reasons metrics={m} />
+          <Reasons metrics={m} slug={slug} releaseId={release.id} />
           <Blockers metrics={m} byId={byId} />
 
           <section>
@@ -141,8 +141,21 @@ type Metrics = ReturnType<typeof calculateRelease>;
  * менеджер читает сверху вниз и первой видит ту, с которой имеет смысл
  * начать. У правил эскалации вклад нулевой — вместо «вклад 0» подписано,
  * что правило поднимает уровень, иначе строка выглядела бы безобидной.
+ *
+ * Причина, за которой стоит конкретная выборка задач, ведёт на неё ссылкой:
+ * прочитав «2 задачи заблокированы», менеджер захочет увидеть эти две, и
+ * повторять фильтр руками он не должен. Ссылка есть не у каждой строки —
+ * см. `reasonHref`.
  */
-function Reasons({ metrics }: { metrics: Metrics }) {
+function Reasons({
+  metrics,
+  slug,
+  releaseId,
+}: {
+  metrics: Metrics;
+  slug: string;
+  releaseId: string;
+}) {
   if (metrics.reasons.length === 0) {
     return (
       <section>
@@ -161,18 +174,28 @@ function Reasons({ metrics }: { metrics: Metrics }) {
         Почему риск {RISK_LEVEL[metrics.riskLevel].label}
       </h2>
       <ol className="mt-3 space-y-2">
-        {metrics.reasons.map((r, i) => (
-          <li
-            key={`${r.code}-${i}`}
-            className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 rounded-xl border border-black/10 px-4 py-3 dark:border-white/15"
-          >
-            <span className="text-sm">
-              <span className="mr-2 opacity-40">{i + 1}</span>
-              {reasonText(r)}
-            </span>
-            <span className="text-xs opacity-50">{reasonWeight(r)}</span>
-          </li>
-        ))}
+        {metrics.reasons.map((r, i) => {
+          const href = reasonHref(r, slug, releaseId);
+
+          return (
+            <li
+              key={`${r.code}-${i}`}
+              className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 rounded-xl border border-black/10 px-4 py-3 dark:border-white/15"
+            >
+              <span className="text-sm">
+                <span className="mr-2 opacity-40">{i + 1}</span>
+                {href ? (
+                  <Link href={href} className="underline underline-offset-4 hover:opacity-70">
+                    {reasonText(r)}
+                  </Link>
+                ) : (
+                  reasonText(r)
+                )}
+              </span>
+              <span className="text-xs opacity-50">{reasonWeight(r)}</span>
+            </li>
+          );
+        })}
       </ol>
       {metrics.riskLevel === metrics.riskLevelByScore ? null : (
         <p className="mt-2 text-xs opacity-50">

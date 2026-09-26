@@ -189,3 +189,47 @@ export function reasonWeight(reason: RiskReason): string {
     ? `вклад ${reason.contribution}`
     : 'поднимает уровень';
 }
+
+/**
+ * Адрес экрана задач, показывающий ровно ту выборку, о которой говорит причина.
+ *
+ * Правило концепции: каждое число — ссылка. Строка «2 задачи заблокированы»
+ * без перехода заставляет менеджера открыть задачи и руками повторить
+ * фильтр, который система уже знает, — и повторить неточно.
+ *
+ * Ссылка появляется не у всех причин, и это сознательно. Дефицит времени,
+ * длина цепочки и вероятность выпуска — свойства релиза целиком, и выборка
+ * задач под них либо совпадает со всем релизом (тогда ссылка ничего не
+ * сообщает), либо требует фильтра, которого у экрана нет. Ссылка, ведущая
+ * не туда, хуже её отсутствия: она обещает ответ и молча подменяет вопрос.
+ */
+export function reasonHref(reason: RiskReason, slug: string, releaseId: string): string | null {
+  const params = new URLSearchParams({ releaseId });
+
+  switch (reason.code) {
+    case 'BLOCKERS':
+      params.set('blocked', 'true');
+      break;
+    case 'CRITICAL_BLOCKER':
+      params.set('blocked', 'true');
+      params.set('priority', 'P0');
+      break;
+    case 'MULTIPLE_P1_BLOCKED':
+      params.set('blocked', 'true');
+      params.set('priority', 'P1');
+      break;
+    case 'TEAM_OVERLOAD':
+    case 'TEAM_OVERLOAD_RULE': {
+      // Узкое место может не определиться — например, когда ни у одной задачи
+      // нет команды. Тогда фильтровать не по чему, и ссылки нет.
+      const teamId = reason.facts.teamId;
+      if (typeof teamId !== 'string' || teamId === '') return null;
+      params.set('teamId', teamId);
+      break;
+    }
+    default:
+      return null;
+  }
+
+  return `/org/${slug}/tasks?${params.toString()}`;
+}

@@ -164,6 +164,7 @@ export function calculateRelease(
     config,
     maxLoad,
     bottleneckName: bottleneck?.teamName ?? null,
+    bottleneckId: bottleneck?.teamId ?? null,
     blockers,
     chainDays,
     chainTaskIds: hasChain ? chain.taskIds : [],
@@ -177,6 +178,7 @@ export function calculateRelease(
     demandRatio,
     maxLoad,
     bottleneckName: bottleneck?.teamName ?? null,
+    bottleneckId: bottleneck?.teamId ?? null,
     blockers,
     chain,
     qa,
@@ -234,6 +236,8 @@ type EscalationInput = {
   config: RiskConfig;
   maxLoad: number;
   bottleneckName: string | null;
+  /** Идентификатор узкого места: по нему интерфейс собирает ссылку на задачи команды. */
+  bottleneckId: string | null;
   blockers: ReturnType<typeof collectBlockers>;
   chainDays: number;
   chainTaskIds: string[];
@@ -298,6 +302,7 @@ function escalate(input: EscalationInput): {
         contribution: 0,
         facts: {
           team: input.bottleneckName ?? '—',
+          teamId: input.bottleneckId ?? '',
           load: round(input.maxLoad, 4),
           threshold: config.escalation.teamLoadHigh,
         },
@@ -314,6 +319,7 @@ function escalate(input: EscalationInput): {
         contribution: 0,
         facts: {
           team: input.bottleneckName ?? '—',
+          teamId: input.bottleneckId ?? '',
           load: round(input.maxLoad, 4),
           threshold: config.escalation.teamLoadMedium,
         },
@@ -398,6 +404,8 @@ type FactorReasonInput = {
   demandRatio: number;
   maxLoad: number;
   bottleneckName: string | null;
+  /** Идентификатор узкого места: по нему интерфейс собирает ссылку на задачи команды. */
+  bottleneckId: string | null;
   blockers: ReturnType<typeof collectBlockers>;
   chain: { taskIds: string[]; days: number };
   qa: { share: number; requiredH: number; capacityH: number };
@@ -438,6 +446,7 @@ function buildFactorReasons(input: FactorReasonInput): RiskReason[] {
       code: 'TEAM_OVERLOAD',
       facts: {
         team: input.bottleneckName ?? '—',
+        teamId: input.bottleneckId ?? '',
         load: round(input.maxLoad, 4),
       },
       taskIds: [],

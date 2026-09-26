@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { days, hours, plural, reasonText, RISK_LEVEL } from './risk';
+import { days, hours, plural, reasonHref, reasonText, RISK_LEVEL } from './risk';
 import type { RiskReason } from '@/domain/types';
+import { taskQuerySchema } from '@/lib/validation/task';
 
 describe('plural', () => {
   it('различает три формы русского числительного', () => {
@@ -119,5 +120,70 @@ describe('reasonText', () => {
    */
   it('неизвестный код отдаётся как есть, а не ломает страницу', () => {
     expect(reasonText(reason({ code: 'НЕЧТО_НОВОЕ' as RiskReason['code'] }))).toBe('НЕЧТО_НОВОЕ');
+  });
+});
+
+/**
+ * Ссылка обязана вести туда, куда обещает.
+ *
+ * Проверяется не только форма адреса, но и то, что экран задач его
+ * примет: параметры разбираются той же схемой, что стоит на входе
+ * страницы. Это и есть смысл теста — `reasonHref` и `taskQuerySchema`
+ * лежат в разных слоях и правятся в разное время, а разойдясь, дадут
+ * ссылку, которая молча открывает список без фильтра.
+ */
+describe('reasonHref', () => {
+  const SLUG = 'demo';
+  const RELEASE = '1b88d25b-644d-4189-9f78-19a723a0fe5f';
+  const TEAM = 'fa37cea8-7dce-4be5-b89b-acffa34dd1d8';
+
+  const query = (href: string) =>
+    taskQuerySchema.parse(Object.fromEntries(new URL(href, 'http://localhost').searchParams));
+
+  it('у блокеров сужает выборку до заблокированных задач релиза', () => {
+    const href = reasonHref(reason({ code: 'BLOCKERS' }), SLUG, RELEASE)!;
+    expect(href.startsWith(`/org/${SLUG}/tasks?`)).toBe(true);
+    expect(query(href)).toMatchObject({ releaseId: RELEASE, blocked: true });
+  });
+
+  it('у критического блокера добавляет приоритет, о котором говорит текст', () => {
+    const p0 = reasonHref(reason({ code: 'CRITICAL_BLOCKER', kind: 'escalation' }), SLUG, RELEASE)!;
+    expect(query(p0)).toMatchObject({ releaseId: RELEASE, blocked: true, priority: 'P0' });
+
+    const p1 = reasonHref(
+      reason({ code: 'MULTIPLE_P1_BLOCKED', kind: 'escalation' }),
+      SLUG,
+      RELEASE,
+    )!;
+    expect(query(p1)).toMatchObject({ releaseId: RELEASE, blocked: true, priority: 'P1' });
+  });
+
+  it('у перегруза команды фильтрует по команде, а не по её названию', () => {
+    const href = reasonHref(
+      reason({ code: 'TEAM_OVERLOAD', facts: { team: 'Тестирование', teamId: TEAM, load: 1.15 } }),
+      SLUG,
+      RELEASE,
+    )!;
+    expect(query(href)).toMatchObject({ releaseId: RELEASE, teamId: TEAM });
+  });
+
+  /**
+   * Узкого места может не быть — тогда фильтровать не по чему. Ссылка на
+   * весь релиз тут притворилась бы ответом на вопрос «какие именно».
+   */
+  it('без идентификатора команды ссылки нет', () => {
+    expect(
+      reasonHref(reason({ code: 'TEAM_OVERLOAD', facts: { team: '—', load: 1.15 } }), SLUG, RELEASE),
+    ).toBeNull();
+  });
+
+  /**
+   * Причины про релиз целиком ссылки не получают: выборка под них либо
+   * совпадает со всем релизом, либо невыразима фильтрами экрана.
+   */
+  it('причины о релизе целиком остаются без ссылки', () => {
+    for (const code of ['TIME_DEFICIT', 'CRITICAL_CHAIN', 'QA_FUNNEL', 'SCOPE_DRIFT', 'LOW_PROBABILITY'] as const) {
+      expect(reasonHref(reason({ code }), SLUG, RELEASE)).toBeNull();
+    }
   });
 });
