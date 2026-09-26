@@ -55,6 +55,22 @@ export default async function proxy(request: NextRequest) {
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'));
 
   if (!user && !isPublic) {
+    /*
+      API отвечает отказом, а не перенаправлением.
+
+      Перенаправление на /login осмысленно для браузера: он откроет форму.
+      Для вызова из кода оно вредно — fetch пройдёт по редиректу сам и
+      вернёт страницу входа с кодом 200, то есть «успех» и HTML там, где
+      вызывающий ждёт JSON. Разобрать такой ответ он не сможет и решит,
+      что испорчены данные, вместо того чтобы понять, что истекла сессия.
+    */
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json(
+        { error: { code: 'unauthorized', message: 'Нужно войти в систему' } },
+        { status: 401 },
+      );
+    }
+
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     // Куда человек шёл — вернём его туда после входа, а не на главную
