@@ -45,6 +45,57 @@ export const RELEASE_STATUS: Record<string, string> = {
   cancelled: 'отменён',
 };
 
+/**
+ * Статусы задачи: подпись и цвет.
+ *
+ * Цвет идёт только вместе со словом (NFR-17, правило 3 концепции). Бейдж
+ * «в работе» синим и «готово» зелёным читается быстрее текста, но при
+ * дальтонизме или печати в ч/б от цвета не остаётся ничего — и если смысл
+ * держался на нём одном, таблица превращается в набор серых пятен.
+ */
+export const TASK_STATUS: Record<string, { label: string; badge: string }> = {
+  backlog: {
+    label: 'бэклог',
+    badge:
+      'border-black/15 bg-black/5 text-black/70 dark:border-white/20 dark:bg-white/10 dark:text-white/70',
+  },
+  in_progress: {
+    label: 'в работе',
+    badge: 'border-blue-600/30 bg-blue-500/10 text-blue-700 dark:text-blue-300',
+  },
+  review: {
+    label: 'ревью',
+    badge: 'border-violet-600/30 bg-violet-500/10 text-violet-700 dark:text-violet-300',
+  },
+  testing: {
+    label: 'тестирование',
+    badge: 'border-amber-600/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
+  },
+  done: {
+    label: 'готово',
+    badge: 'border-emerald-600/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+  },
+  cancelled: {
+    label: 'отменена',
+    badge:
+      'border-black/15 bg-black/5 text-black/45 dark:border-white/20 dark:bg-white/5 dark:text-white/45',
+  },
+};
+
+/**
+ * Приоритеты. P0 выделен, P2 и P3 — нет.
+ *
+ * Подсветить все четыре — значит не выделить ни одного: приоритет нужен,
+ * чтобы взгляд находил P0 в списке из пятидесяти строк, а не чтобы
+ * раскрасить таблицу.
+ */
+export const TASK_PRIORITY: Record<string, string> = {
+  P0: 'border-red-600/40 bg-red-500/10 text-red-700 dark:text-red-300',
+  P1: 'border-orange-600/30 bg-orange-500/10 text-orange-700 dark:text-orange-300',
+  P2: 'border-black/15 text-black/60 dark:border-white/20 dark:text-white/60',
+  P3: 'border-black/10 text-black/40 dark:border-white/15 dark:text-white/40',
+};
+
 /** Склонение по числу: plural(2, 'задача', 'задачи', 'задач') → 'задачи'. */
 export function plural(n: number, one: string, few: string, many: string): string {
   const mod100 = Math.abs(n) % 100;

@@ -11,6 +11,7 @@
 
 import { badJson, BAD_JSON, created, fail, fromPostgres, invalid, ok, readJson, unauthorized } from '@/lib/api/http';
 import { toApiTask, toInsert } from '@/lib/api/task';
+import { selectTasks } from '@/lib/data/tasks';
 import { createClient } from '@/lib/supabase/server';
 import { taskCreateSchema, taskQuerySchema } from '@/lib/validation/task';
 
@@ -30,37 +31,14 @@ export async function GET(request: Request) {
     Object.fromEntries(new URL(request.url).searchParams),
   );
   if (!parsed.success) return invalid(parsed.error);
-  const q = parsed.data;
 
-  let query = supabase.from('tasks').select('*', { count: 'exact' });
-
-  if (q.releaseId) query = query.eq('release_id', q.releaseId);
-  if (q.projectId) query = query.eq('project_id', q.projectId);
-  if (q.teamId) query = query.eq('team_id', q.teamId);
-  if (q.status) query = query.eq('status', q.status);
-  if (q.priority) query = query.eq('priority', q.priority);
-  // Блокировка — не статус, а отдельная ось: задача бывает заблокирована
-  // в любом статусе, кроме завершённых. Признак хранится отметкой времени,
-  // поэтому фильтр идёт по её наличию.
-  if (q.blocked !== undefined) {
-    query = q.blocked ? query.not('blocked_since', 'is', null) : query.is('blocked_since', null);
-  }
-  if (q.q) {
-    // Экранируем запятую и скобки: в синтаксисе PostgREST они разделяют
-    // условия, и строка поиска с запятой иначе сломала бы разбор фильтра.
-    const safe = q.q.replace(/[,()\\]/g, ' ');
-    query = query.ilike('title', `%${safe}%`);
-  }
-
-  const { data, error, count } = await query
-    .order('priority')
-    .order('created_at', { ascending: false })
-    .range(q.offset, q.offset + q.limit - 1);
-
+  // Сама выборка — в lib/data/tasks: те же фильтры нужны экрану задач,
+  // и держать их в обработчике значит однажды развести две копии.
+  const { rows, total, error } = await selectTasks(supabase, parsed.data);
   if (error) return fromPostgres(error);
 
-  return ok(data.map(toApiTask), {
-    headers: { 'x-total-count': String(count ?? 0) },
+  return ok(rows.map(toApiTask), {
+    headers: { 'x-total-count': String(total) },
   });
 }
 
