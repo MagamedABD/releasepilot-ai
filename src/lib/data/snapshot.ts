@@ -13,9 +13,11 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { calculateRelease } from '@/domain/risk';
 import type { Database, TeamKind as DbTeamKind } from '@/lib/database.types';
 import type {
   Dependency,
+  ReleaseMetrics,
   ReleaseSnapshot,
   Task,
   Team,
@@ -183,4 +185,105 @@ export async function loadReleaseSnapshot(
     },
     now,
   );
+}
+
+/** Релиз вместе с посчитанными по нему метриками. */
+export type ReleaseWithMetrics = {
+  id: string;
+  name: string;
+  status: Database['public']['Enums']['release_status'];
+  plannedDate: string;
+  releasedAt: string | null;
+  projectKey: string;
+  metrics: ReleaseMetrics;
+};
+
+/**
+ * Все релизы организации с метриками.
+ *
+ * Очевидный способ — пройтись по релизам и на каждом вызвать
+ * loadReleaseSnapshot — даёт четыре запроса на релиз. На демо с четырьмя
+ * релизами это незаметно, на полусотне — уже нет, и переписывать пришлось
+ * бы ровно тогда, когда некогда. Поэтому здесь пять запросов независимо от
+ * числа релизов, а группировка делается в памяти.
+ *
+ * Фильтра по org_id в выдаче достаточно: RLS уже ограничивает её
+ * организациями пользователя, и org_id здесь — выбор нужной из доступных,
+ * а не проверка доступа.
+ */
+export async function loadOrgReleases(
+  supabase: Client,
+  orgId: string,
+  now: string = new Date().toISOString(),
+): Promise<ReleaseWithMetrics[]> {
+  const [releasesRes, teamsRes, capacityRes, tasksRes, depsRes] = await Promise.all([
+    supabase
+      .from('releases')
+      .select('id, name, status, planned_date, started_at, released_at, projects(key)')
+      .eq('org_id', orgId)
+      .order('planned_date'),
+    supabase.from('teams').select('id, name, kind').eq('org_id', orgId),
+    supabase
+      .from('team_capacity')
+      .select('team_id, period_start, period_end, available_hours')
+      .eq('org_id', orgId),
+    supabase.from('tasks').select('*').eq('org_id', orgId).not('release_id', 'is', null),
+    supabase
+      .from('task_dependencies')
+      .select('blocker_task_id, blocked_task_id, type')
+      .eq('org_id', orgId),
+  ]);
+
+  const releases = releasesRes.data ?? [];
+  const teams = teamsRes.data ?? [];
+  const capacity = capacityRes.data ?? [];
+
+  const tasksByRelease = new Map<string, TaskRow[]>();
+  for (const task of tasksRes.data ?? []) {
+    if (!task.release_id) continue;
+    const bucket = tasksByRelease.get(task.release_id);
+    if (bucket) bucket.push(task);
+    else tasksByRelease.set(task.release_id, [task]);
+  }
+
+  return releases.map((r) => {
+    const tasks = tasksByRelease.get(r.id) ?? [];
+    const ids = new Set(tasks.map((t) => t.id));
+
+    // Связи соседних релизов сюда попасть не должны: иначе критическая
+    // цепочка посчиталась бы длиннее, чем есть на самом деле.
+    const dependencies = (depsRes.data ?? []).filter(
+      (d) => ids.has(d.blocker_task_id) && ids.has(d.blocked_task_id),
+    );
+
+    const snapshot = toSnapshot(
+      {
+        release: {
+          id: r.id,
+          name: r.name,
+          planned_date: r.planned_date,
+          // Момент старта обязателен: от него отсчитывается дрейф объёма.
+          // Передать сюда null — получить нулевой дрейф в списке при
+          // ненулевом в карточке релиза, то есть два разных ответа на
+          // один вопрос.
+          started_at: r.started_at,
+        },
+        teams,
+        tasks,
+        dependencies,
+        capacity,
+      },
+      now,
+    );
+
+    return {
+      id: r.id,
+      name: r.name,
+      status: r.status,
+      plannedDate: r.planned_date,
+      releasedAt: r.released_at,
+      projectKey: (r.projects as { key: string } | null)?.key ?? '—',
+      metrics: calculateRelease(snapshot),
+    };
+  });
 }
