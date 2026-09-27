@@ -209,11 +209,150 @@ const RELEASE_ANTIFRAUD: ReleaseSpec = {
   ],
 };
 
+/*
+  ── История поставки ──────────────────────────────────────────────────────
+
+  Пять выпущенных релизов сверх антифрода добавлены не для объёма, и у них
+  три отдельные причины.
+
+  Первая — порог прогноза. Монте-Карло включается от пяти завершённых
+  релизов (`minReleasesForMonteCarlo`, FR-22), иначе отдаётся
+  детерминированный фолбэк. С одним выпущенным релизом в демо главная
+  функция системы была бы не видна: вместо вероятности проверяющий получал
+  бы предупреждение о недостатке истории. Данные подгоняются под порог
+  осознанно — порог описывает рабочую систему, а демо обязано её показывать.
+
+  Вторая — калибровка. `estimatePessimism` подлежит уточнению по истории
+  (ADR-001 §6), и уточнять его не на чем, если в базе нет пар «оценка —
+  факт». Здесь такие пары есть, и перерасход в них неодинаков: 1.05 у
+  релиза, вышедшего в срок, и 1.45 у вышедшего на неделю позже. По всей
+  истории выходит около 1.18 — то есть команда тратит в среднем на 18%
+  больше оценки. Это делает двойку в конфиге тем, чем она и заявлена:
+  пессимистичным краем, а не средним значением.
+
+  Третья — тренды (FR-39). Из шести выпущенных релизов трое вышли позже
+  плана, и это важнее красивой картинки: демо, где в срок выходит всё,
+  доказывало бы, что система не нужна.
+
+  Связь перерасхода со сроком в данных есть, но она не жёсткая, и это тоже
+  сделано намеренно. Два худших перерасхода (1.45 и 1.35) дали по неделе
+  опоздания, релиз с точными оценками вышел в срок — а вот 2.10 перерасходовал
+  треть часов и всё равно вышел на два дня раньше плана.
+
+  Последний случай в данных нужен. Он показывает то, на чём держится весь
+  прогноз: срок срывает не перерасход сам по себе, а перерасход, которому не
+  хватило запаса по времени. У 2.10 на тридцать плановых дней ушло двадцать
+  восемь — лишние часы уместились в календарь. Убери такой пример, и данные
+  подсказывали бы, что часы и даты — одно и то же; тогда непонятно, зачем
+  прогнозу вообще знать ёмкость команд.
+*/
+
+/** Точные оценки, выход в срок. Опорная точка: так бывает. */
+const RELEASE_LIMITS: ReleaseSpec = {
+  key: 'PAY-2.12',
+  project: 'PAY',
+  name: '2.12 — Лимиты и блокировки',
+  status: 'released',
+  plannedIn: -70,
+  startedDaysAgo: 100,
+  releasedDaysAgo: 70,
+  tasks: [
+    { key: 'PAY-121', title: 'Суточные лимиты по клиенту', team: 'be', status: 'done', priority: 'P1', estimateH: 18, spentH: 20, assignee: 'orlov' },
+    { key: 'PAY-122', title: 'Блокировка по подозрению', team: 'be', status: 'done', priority: 'P0', estimateH: 14, spentH: 14, assignee: 'volkova' },
+    { key: 'PAY-123', title: 'Ручная разблокировка оператором', team: 'be', status: 'done', priority: 'P2', estimateH: 20, spentH: 22, assignee: 'gushchin' },
+    { key: 'PAY-124', title: 'Экран лимитов', team: 'fe', status: 'done', priority: 'P2', estimateH: 10, spentH: 10, assignee: 'kuznetsov' },
+    { key: 'PAY-125', title: 'Проверки лимитов в тестах', team: 'qa', status: 'done', priority: 'P1', estimateH: 16, spentH: 16, assignee: 'titov' },
+    { key: 'PAY-126', title: 'Сводка по блокировкам', team: 'an', status: 'done', priority: 'P3', estimateH: 8, spentH: 8, assignee: 'belova' },
+  ],
+};
+
+/** Худший перерасход истории — и неделя опоздания вслед за ним. */
+const RELEASE_LINKS: ReleaseSpec = {
+  key: 'PAY-2.11',
+  project: 'PAY',
+  name: '2.11 — Платёжные ссылки',
+  status: 'released',
+  plannedIn: -95,
+  startedDaysAgo: 125,
+  releasedDaysAgo: 88,
+  tasks: [
+    { key: 'PAY-111', title: 'Генерация платёжной ссылки', team: 'be', status: 'done', priority: 'P1', estimateH: 20, spentH: 30, assignee: 'orlov' },
+    { key: 'PAY-112', title: 'Срок жизни и отзыв ссылки', team: 'be', status: 'done', priority: 'P1', estimateH: 16, spentH: 24, assignee: 'volkova' },
+    { key: 'PAY-113', title: 'Страница оплаты по ссылке', team: 'fe', status: 'done', priority: 'P1', estimateH: 14, spentH: 20, assignee: 'sokolova' },
+    { key: 'PAY-114', title: 'Настройки ссылки в кабинете', team: 'fe', status: 'done', priority: 'P2', estimateH: 18, spentH: 26, assignee: 'kuznetsov' },
+    { key: 'PAY-115', title: 'Регресс оплаты по ссылке', team: 'qa', status: 'done', priority: 'P0', estimateH: 12, spentH: 16, assignee: 'lebedeva' },
+    { key: 'PAY-116', title: 'Автотесты истечения срока', team: 'qa', status: 'done', priority: 'P1', estimateH: 10, spentH: 14, assignee: 'titov' },
+    { key: 'PAY-117', title: 'Статистика переходов по ссылкам', team: 'an', status: 'done', priority: 'P2', estimateH: 8, spentH: 12, assignee: 'belova' },
+  ],
+};
+
+/** Вышел на два дня раньше плана при заметном перерасходе часов. */
+const RELEASE_RECURRING: ReleaseSpec = {
+  key: 'PAY-2.10',
+  project: 'PAY',
+  name: '2.10 — Рекуррентные платежи',
+  status: 'released',
+  plannedIn: -120,
+  startedDaysAgo: 150,
+  releasedDaysAgo: 122,
+  tasks: [
+    { key: 'PAY-101', title: 'Подписки и расписание списаний', team: 'be', status: 'done', priority: 'P1', estimateH: 24, spentH: 32, assignee: 'orlov' },
+    { key: 'PAY-102', title: 'Повторная попытка списания', team: 'be', status: 'done', priority: 'P0', estimateH: 16, spentH: 22, assignee: 'volkova' },
+    { key: 'PAY-103', title: 'Отмена подписки клиентом', team: 'be', status: 'done', priority: 'P1', estimateH: 20, spentH: 26, assignee: 'gushchin' },
+    { key: 'PAY-104', title: 'Экран управления подписками', team: 'fe', status: 'done', priority: 'P1', estimateH: 12, spentH: 16, assignee: 'sokolova' },
+    { key: 'PAY-105', title: 'Сценарии списаний в тестах', team: 'qa', status: 'done', priority: 'P0', estimateH: 18, spentH: 22, assignee: 'lebedeva' },
+    { key: 'PAY-106', title: 'Отчёт по неуспешным списаниям', team: 'an', status: 'done', priority: 'P2', estimateH: 10, spentH: 12, assignee: 'belova' },
+    { key: 'PAY-107', title: 'Уведомления о списании', team: 'be', status: 'done', priority: 'P2', estimateH: 8, spentH: 10, assignee: 'orlov' },
+  ],
+};
+
+/** Второй проект в истории: без него тренд выглядел бы свойством PAY. */
+const RELEASE_ONE_CLICK: ReleaseSpec = {
+  key: 'CHK-1.9',
+  project: 'CHK',
+  name: '1.9 — Оплата в один шаг',
+  status: 'released',
+  plannedIn: -50,
+  startedDaysAgo: 80,
+  releasedDaysAgo: 43,
+  tasks: [
+    { key: 'CHK-101', title: 'Оплата сохранённой картой без ввода кода', team: 'fe', status: 'done', priority: 'P1', estimateH: 22, spentH: 30, assignee: 'sokolova' },
+    { key: 'CHK-102', title: 'Согласие на хранение карты', team: 'fe', status: 'done', priority: 'P1', estimateH: 18, spentH: 26, assignee: 'kuznetsov' },
+    { key: 'CHK-103', title: 'Подтверждение платежа без редиректа', team: 'be', status: 'done', priority: 'P0', estimateH: 14, spentH: 18, assignee: 'gushchin' },
+    { key: 'CHK-104', title: 'Откат на полную форму при отказе', team: 'be', status: 'done', priority: 'P1', estimateH: 16, spentH: 22, assignee: 'volkova' },
+    { key: 'CHK-105', title: 'Регресс сценариев оплаты', team: 'qa', status: 'done', priority: 'P0', estimateH: 12, spentH: 16, assignee: 'lebedeva' },
+    { key: 'CHK-106', title: 'Конверсия быстрой оплаты', team: 'an', status: 'done', priority: 'P2', estimateH: 10, spentH: 12, assignee: 'belova' },
+  ],
+};
+
+/** Единственный релиз, уложившийся в оценку. Так тоже бывает, и это видно. */
+const RELEASE_EXPORTS: ReleaseSpec = {
+  key: 'RPT-1.6',
+  project: 'RPT',
+  name: '1.6 — Ежедневные выгрузки',
+  status: 'released',
+  plannedIn: -30,
+  startedDaysAgo: 60,
+  releasedDaysAgo: 33,
+  tasks: [
+    { key: 'RPT-091', title: 'Расписание выгрузок', team: 'be', status: 'done', priority: 'P2', estimateH: 16, spentH: 14, assignee: 'volkova' },
+    { key: 'RPT-092', title: 'Формат файла выгрузки', team: 'be', status: 'done', priority: 'P2', estimateH: 12, spentH: 12, assignee: 'orlov' },
+    { key: 'RPT-093', title: 'Доставка в хранилище', team: 'be', status: 'done', priority: 'P1', estimateH: 14, spentH: 13, assignee: 'gushchin' },
+    { key: 'RPT-094', title: 'Экран истории выгрузок', team: 'fe', status: 'done', priority: 'P3', estimateH: 10, spentH: 10, assignee: 'kuznetsov' },
+    { key: 'RPT-095', title: 'Проверка полноты выгрузки', team: 'qa', status: 'done', priority: 'P2', estimateH: 8, spentH: 8, assignee: 'titov' },
+  ],
+};
+
 export const RELEASES: ReleaseSpec[] = [
   RELEASE_REFUNDS,
   RELEASE_CHECKOUT,
   RELEASE_RECONCILIATION,
   RELEASE_ANTIFRAUD,
+  RELEASE_EXPORTS,
+  RELEASE_ONE_CLICK,
+  RELEASE_LIMITS,
+  RELEASE_LINKS,
+  RELEASE_RECURRING,
 ];
 
 /**
