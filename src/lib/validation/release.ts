@@ -101,6 +101,24 @@ export const releaseQuerySchema = z.object({
 });
 
 /**
+ * Запрос прогноза.
+ *
+ * Единственный параметр — дата вопроса «успеем ли к …» (FR-23). Проверяется
+ * она тем же правилом, что и плановая, и поэтому бесплатно получает защиту
+ * от тридцатого февраля: без неё дата перекатилась бы во второе марта, и
+ * вероятность вернулась бы для срока на два дня позже названного.
+ *
+ * Чего здесь нет: числа итераций и зерна. Итерации — не выбор клиента, а
+ * стоимость расчёта на сервере, и `?iterations=10000000` стал бы способом
+ * положить сервер запросом на чтение. Зерно не отдаётся по обратной
+ * причине: воспроизводимость прогноза — обещание системы, а возможность
+ * его переопределить превратила бы обещание в настройку.
+ */
+export const forecastQuerySchema = z.object({
+  targetDate: plannedDate.optional(),
+});
+
+/**
  * Ключ проекта: PPT, PAY2, DEV.
  *
  * Ограничение повторяет проверку в базе (`^[A-Z][A-Z0-9]{1,9}$`) и
@@ -153,6 +171,7 @@ export const projectQuerySchema = z.object({
 export type ReleaseCreateInput = z.infer<typeof releaseCreateSchema>;
 export type ReleaseUpdateInput = z.infer<typeof releaseUpdateSchema>;
 export type ReleaseQuery = z.infer<typeof releaseQuerySchema>;
+export type ForecastQuery = z.infer<typeof forecastQuerySchema>;
 export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
 export type ProjectUpdateInput = z.infer<typeof projectUpdateSchema>;
 export type ProjectQuery = z.infer<typeof projectQuerySchema>;
