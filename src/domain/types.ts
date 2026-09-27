@@ -196,3 +196,63 @@ export type ReleaseMetrics = {
   /** Заполняется, если расчёту передан прогноз. */
   probabilityOnTime: number | null;
 };
+
+/**
+ * `monte_carlo` — полноценный прогноз распределением.
+ * `deterministic` — фолбэк при недостатке истории (FR-22): остаток работ,
+ * делённый на ёмкость, без разброса и без вероятности.
+ */
+export type ForecastMethod = 'monte_carlo' | 'deterministic';
+
+export type ForecastPoint = {
+  /** Доля итераций: 0.8 — «успеем с вероятностью 80%». */
+  probability: number;
+  /** Рабочих дней от сегодня. `Infinity`, если работа неисполнима. */
+  workingDays: number;
+  /** Дата готовности. `null`, если дней бесконечно много. */
+  date: IsoDate | null;
+};
+
+export type ReleaseForecast = {
+  releaseId: string;
+  computedAt: IsoDateTime;
+  method: ForecastMethod;
+
+  /** Дата, к которой считалась вероятность. По умолчанию плановая (FR-23). */
+  targetDate: IsoDate;
+  /** Рабочих дней до `targetDate`, не считая сегодняшний. */
+  targetWorkingDays: number;
+
+  /**
+   * Вероятность успеть к `targetDate`.
+   *
+   * У детерминированного метода — `null`, и это не пропуск данных. Расчёт
+   * «остаток делённый на ёмкость» даёт одну дату, а не распределение;
+   * назвать его результат вероятностью значило бы выдать уверенность,
+   * которой в нём нет. Движок риска такой `null` понимает и правило
+   * `LOW_PROBABILITY` не применяет.
+   */
+  probabilityOnTime: number | null;
+
+  /** Ожидаемая дата: медиана у Монте-Карло, единственная оценка у фолбэка. */
+  expectedDate: IsoDate | null;
+  expectedWorkingDays: number;
+
+  /** Даты по перцентилям. У детерминированного метода пусто. */
+  percentiles: ForecastPoint[];
+
+  /** Сколько итераций выполнено. У детерминированного метода — 0. */
+  iterations: number;
+  /** Коэффициент занижения оценок, использованный в пессимистичной ветке. */
+  pessimismFactor: number;
+
+  /**
+   * Почему точность снижена. `null` у полноценного прогноза.
+   * Заполненное поле — то, о чём система обязана сообщить явно (US-16).
+   */
+  degraded: {
+    reason: 'insufficient_history';
+    completedReleases: number;
+    requiredReleases: number;
+  } | null;
+};

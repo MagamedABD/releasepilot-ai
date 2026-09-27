@@ -78,6 +78,43 @@ export function remainingWorkingDays(
   return workingDaysInclusive(from, to, holidays);
 }
 
+/**
+ * Обратная операция к `remainingWorkingDays`: дата, до которой остаётся
+ * ровно `days` рабочих дней.
+ *
+ * Дробное число дней округляется вверх. Задача, требующая 2.1 рабочего дня,
+ * заканчивается на третий день, а не «через два дня с хвостиком»: календарь
+ * не знает половин дней, а прогноз должен называть день, в который релиз
+ * готов, а не момент, когда работа теоретически исчерпана.
+ *
+ * Тот же отсчёт, что и в `remainingWorkingDays`: считаем с завтрашнего дня,
+ * поэтому обе функции обратны друг другу — это проверяется тестом.
+ */
+export function dateAfterWorkingDays(
+  now: IsoDateTime,
+  days: number,
+  holidays: ReadonlySet<IsoDate>,
+): IsoDate {
+  if (!Number.isFinite(days)) {
+    throw new Error(`Не число рабочих дней: ${days}`);
+  }
+
+  let cursor = startOfDay(now);
+  let remaining = Math.ceil(days);
+  // Ноль и меньше — работы не осталось, готово сегодня.
+  if (remaining <= 0) return toIsoDate(cursor);
+
+  for (let step = 0; remaining > 0; step++) {
+    if (step > MAX_SPAN_DAYS) {
+      throw new Error(`Слишком далёкая дата: ${Math.ceil(days)} рабочих дней`);
+    }
+    cursor = addDays(cursor, 1);
+    if (!isWeekend(cursor) && !holidays.has(toIsoDate(cursor))) remaining--;
+  }
+
+  return toIsoDate(cursor);
+}
+
 export function daysBetween(from: IsoDateTime, to: IsoDateTime): number {
   return (parseInstant(to).getTime() - parseInstant(from).getTime()) / DAY_MS;
 }
