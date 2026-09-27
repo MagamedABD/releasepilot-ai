@@ -14,7 +14,7 @@ import { RISK_CONFIG } from '@/domain/config';
 import { forecastRelease } from '@/domain/forecast';
 import { toApiForecast } from '@/lib/api/forecast';
 import { fromPostgres, invalid, isUuid, notFound, ok, unauthorized } from '@/lib/api/http';
-import { loadReleaseSnapshot } from '@/lib/data/snapshot';
+import { loadReleaseContext } from '@/lib/data/context';
 import { createClient } from '@/lib/supabase/server';
 import { forecastQuerySchema } from '@/lib/validation/release';
 
@@ -34,55 +34,15 @@ export async function GET(
   );
   if (!parsed.success) return invalid(parsed.error);
 
-  /*
-    Организация читается отдельным запросом, потому что снимок её не
-    содержит: `ReleaseSnapshot` — доменный тип, и знать про организации ему
-    незачем. А для длины истории организация нужна: считать завершённые
-    релизы «все, какие видно» означало бы у пользователя, состоящего в двух
-    организациях, сложить их истории в одну.
+  // Снимок и длина истории — общая подготовка расчётных эндпоинтов, и
+  // правило «что считать историей» живёт там же, в одном месте на всех.
+  const result = await loadReleaseContext(supabase, id);
+  if (result.kind === 'error') return fromPostgres(result.error);
+  if (result.kind === 'not_found') return notFound();
 
-    Заодно этот запрос — калитка 404: дальше идти незачем, если релиза нет.
-  */
-  const { data: release, error: releaseError } = await supabase
-    .from('releases')
-    .select('id, org_id')
-    .eq('id', id)
-    .maybeSingle();
-
-  if (releaseError) return fromPostgres(releaseError);
-  if (!release) return notFound();
-
-  // Момент расчёта один на снимок и на прогноз. Возьми их порознь — и на
-  // стыке суток снимок посчитался бы от одного дня, а остаток рабочих
-  // дней от другого.
-  const now = new Date().toISOString();
-
-  const [snapshot, history] = await Promise.all([
-    loadReleaseSnapshot(supabase, id, now),
-    /*
-      История считается по организации, а не по проекту. Коэффициент
-      занижения оценок — свойство того, как оценивает эта организация:
-      команды в схеме принадлежат ей, а не проекту. По проекту порог
-      отсекал бы прогноз у каждого нового проекта в опытной организации,
-      то есть ровно там, где история как раз есть.
-
-      Сам релиз из счёта исключён: историей для него служат другие
-      релизы, а не он сам.
-    */
-    supabase
-      .from('releases')
-      .select('id', { count: 'exact', head: true })
-      .eq('org_id', release.org_id)
-      .eq('status', 'released')
-      .neq('id', id),
-  ]);
-
-  if (!snapshot) return notFound();
-  if (history.error) return fromPostgres(history.error);
-
-  const forecast = forecastRelease(snapshot, RISK_CONFIG, {
+  const forecast = forecastRelease(result.context.snapshot, RISK_CONFIG, {
     targetDate: parsed.data.targetDate,
-    completedReleases: history.count ?? 0,
+    completedReleases: result.context.completedReleases,
   });
 
   return ok(toApiForecast(forecast));

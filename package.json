@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "check:db": "tsx scripts/check-db-types.ts",
     "smoke:auth": "tsx scripts/smoke-auth.ts",
+    "smoke:api": "tsx scripts/smoke-api.ts",
     "seed:demo": "tsx scripts/seed-demo.ts",
     "metrics": "tsx scripts/show-metrics.ts",
     "show:release": "tsx scripts/show-release.ts"
