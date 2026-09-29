@@ -6,6 +6,7 @@ import {
   releaseCreateSchema,
   releaseQuerySchema,
   releaseUpdateSchema,
+  simulateSchema,
 } from './release';
 
 const ORG = '11111111-1111-4111-8111-111111111111';
@@ -136,5 +137,41 @@ describe('projectUpdateSchema', () => {
   it('организацию сменить нельзя', () => {
     const parsed = projectUpdateSchema.parse({ name: 'Платежи', orgId: ORG });
     expect('orgId' in parsed).toBe(false);
+  });
+});
+
+describe('simulateSchema', () => {
+  const TASK = '33333333-3333-4333-8333-333333333333';
+  const TEAM = '44444444-4444-4444-8444-444444444444';
+
+  it('пустой сценарий отклоняется: считать нечего', () => {
+    expect(simulateSchema.safeParse({}).success).toBe(false);
+    expect(simulateSchema.safeParse({ excludeTaskIds: [], extraCapacity: [] }).success).toBe(false);
+  });
+
+  it('повтор задачи сливается, недостающий список становится пустым', () => {
+    const parsed = simulateSchema.parse({ excludeTaskIds: [TASK, TASK] });
+    expect(parsed).toEqual({ excludeTaskIds: [TASK], extraCapacity: [] });
+  });
+
+  it('повтор команды отклоняется, а не складывается', () => {
+    const result = simulateSchema.safeParse({
+      extraCapacity: [
+        { teamId: TEAM, hours: 10 },
+        { teamId: TEAM, hours: 20 },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('часы строго положительны и ограничены сверху', () => {
+    for (const hours of [0, -5, 1001]) {
+      expect(simulateSchema.safeParse({ extraCapacity: [{ teamId: TEAM, hours }] }).success).toBe(false);
+    }
+    expect(simulateSchema.safeParse({ extraCapacity: [{ teamId: TEAM, hours: 12.5 }] }).success).toBe(true);
+  });
+
+  it('идентификаторы — только UUID', () => {
+    expect(simulateSchema.safeParse({ excludeTaskIds: ['PPT-301'] }).success).toBe(false);
   });
 });

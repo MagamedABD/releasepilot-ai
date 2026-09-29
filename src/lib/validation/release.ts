@@ -119,6 +119,52 @@ export const forecastQuerySchema = z.object({
 });
 
 /**
+ * What-if сценарий (FR-31).
+ *
+ * Потолки на размер — не про корректность, а про цену: симуляция считает
+ * релиз дважды, с Монте-Карло, и запрос на тысячу команд стал бы способом
+ * загрузить сервер запросом «на чтение». Двести задач больше любого
+ * реального релиза в демо, а команд в организации — единицы.
+ *
+ * Чего здесь нет: проверки, что задачи и команды принадлежат релизу. Это
+ * знает только снимок, и проверяет её домен (`validateScenario`), — схема
+ * отвечает за форму, а не за существование.
+ */
+export const simulateSchema = z
+  .object({
+    excludeTaskIds: z
+      .array(uuid)
+      .max(200, 'Слишком много задач в одном сценарии')
+      // Повтор не ошибка пользователя, а особенность сборки списка на
+      // клиенте; дважды перенести задачу нельзя, так что просто сливаем.
+      .transform((ids) => [...new Set(ids)])
+      .default([]),
+    extraCapacity: z
+      .array(
+        z.object({
+          teamId: uuid,
+          hours: z
+            .number({ message: 'Ожидается число часов' })
+            .positive('Часы должны быть больше нуля')
+            .max(1000, 'Слишком много часов для одного релиза'),
+        }),
+      )
+      .max(50, 'Слишком много команд в одном сценарии')
+      /*
+        Повтор команды, в отличие от повтора задачи, отклоняется: «+10 и
+        +20 часов бэкенду» можно прочитать и как 30, и как опечатку в одной
+        из строк. Угадывать здесь значит молча посчитать не тот сценарий.
+      */
+      .refine((items) => new Set(items.map((i) => i.teamId)).size === items.length, {
+        message: 'Команда указана дважды',
+      })
+      .default([]),
+  })
+  .refine((v) => v.excludeTaskIds.length > 0 || v.extraCapacity.length > 0, {
+    message: 'Сценарий пуст: укажите задачи для переноса или дополнительные часы',
+  });
+
+/**
  * Ключ проекта: PPT, PAY2, DEV.
  *
  * Ограничение повторяет проверку в базе (`^[A-Z][A-Z0-9]{1,9}$`) и
@@ -172,6 +218,7 @@ export type ReleaseCreateInput = z.infer<typeof releaseCreateSchema>;
 export type ReleaseUpdateInput = z.infer<typeof releaseUpdateSchema>;
 export type ReleaseQuery = z.infer<typeof releaseQuerySchema>;
 export type ForecastQuery = z.infer<typeof forecastQuerySchema>;
+export type SimulateInput = z.infer<typeof simulateSchema>;
 export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
 export type ProjectUpdateInput = z.infer<typeof projectUpdateSchema>;
 export type ProjectQuery = z.infer<typeof projectQuerySchema>;

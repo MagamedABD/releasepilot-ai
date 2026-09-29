@@ -71,8 +71,11 @@ type Result = { status: number; body: unknown };
  * конверте: забытый `.data` даёт `undefined`, а `undefined` тихо проходит
  * половину сравнений.
  */
-async function get(path: string, cookie: string): Promise<Result> {
-  const res = await fetch(`${BASE}${path}`, { headers: { cookie } });
+async function get(path: string, cookie: string, init: RequestInit = {}): Promise<Result> {
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    headers: { cookie, 'Content-Type': 'application/json' },
+  });
   const text = await res.text();
   let body: unknown = text;
   try {
@@ -85,6 +88,10 @@ async function get(path: string, cookie: string): Promise<Result> {
     /* не JSON — оставляем текстом, это само по себе находка */
   }
   return { status: res.status, body };
+}
+
+function post(path: string, cookie: string, body: unknown): Promise<Result> {
+  return get(path, cookie, { method: 'POST', body: JSON.stringify(body) });
 }
 
 async function main() {
@@ -259,7 +266,67 @@ async function main() {
     'вероятность не убывает с отдалением срока',
   );
 
-  console.log('\n8. Чего быть не должно');
+  console.log('\n8. What-if (FR-31, FR-33)');
+  type Side = {
+    metrics: { riskScore: number; riskLevel: string; teamLoad: { teamId: string; load: number | null }[] };
+    forecast: { probabilityOnTime: number | null; expectedDate: string | null };
+  };
+  type Simulation = {
+    before: Side;
+    after: Side;
+    delta: { riskScore: number; probabilityOnTime: number | null; expectedWorkingDays: number | null };
+  };
+  type MetricsWithIds = { teamLoad: { teamId: string; teamName: string; load: number | null; hasCapacity: boolean }[] };
+
+  // Часы — самой загруженной команде из тех, у кого ёмкость вообще есть:
+  // это первое, что предложил бы менеджер, и эффект должен быть виден.
+  const busiest = [...((metrics as unknown as MetricsWithIds)?.teamLoad ?? [])]
+    .filter((t) => t.hasCapacity)
+    .sort((a, b) => (b.load ?? 0) - (a.load ?? 0))[0];
+  const sc = await post(`/api/releases/${target.id}/simulate`, cookie, {
+    extraCapacity: [{ teamId: busiest?.teamId, hours: 40 }],
+  });
+  const simulation = sc.body as Simulation;
+  check(sc.status === 200, `+40ч команде «${busiest?.teamName}» посчитано`, `HTTP ${sc.status}`);
+  // «До» обязано совпадать с карточкой: иначе дельта мерила бы разницу
+  // двух расчётов, а не эффект сценария.
+  check(
+    typeof simulation?.before?.metrics?.riskScore === 'number' &&
+      simulation.before.metrics.riskScore === metrics?.riskScore &&
+      simulation.before.forecast.probabilityOnTime === metrics?.probabilityOnTime,
+    '«до» совпадает с метриками релиза',
+  );
+  check(
+    typeof simulation?.delta?.riskScore === 'number' && simulation.delta.riskScore <= 0,
+    `скор ${simulation?.before?.metrics?.riskScore} → ${simulation?.after?.metrics?.riskScore} ` +
+      `(${simulation?.delta?.riskScore})`,
+    'дополнительные часы не могут поднять риск',
+  );
+  console.log(
+    `     вероятность ${simulation?.before?.forecast?.probabilityOnTime} → ${simulation?.after?.forecast?.probabilityOnTime}` +
+      ` · дата ${simulation?.before?.forecast?.expectedDate} → ${simulation?.after?.forecast?.expectedDate}`,
+  );
+
+  // FR-33: блокер, который держит остающиеся задачи, перенести нельзя.
+  const holder = blockers?.blockers?.find((b) => b.blocksCount > 0);
+  if (holder) {
+    const rej = await post(`/api/releases/${target.id}/simulate`, cookie, {
+      excludeTaskIds: [holder.task.id],
+    });
+    const code = (rej.body as { error?: { code: string } })?.error?.code;
+    check(
+      rej.status === 422 && code === 'scenario_rejected',
+      `перенос ${holder.task.key} отклонён: держит ${holder.blocksCount}`,
+      `HTTP ${rej.status} ${code}`,
+    );
+  }
+
+  const empty = await post(`/api/releases/${target.id}/simulate`, cookie, {});
+  check(empty.status === 422, 'пустой сценарий — 422', `HTTP ${empty.status}`);
+  const anonSim = await post(`/api/releases/${target.id}/simulate`, '', { excludeTaskIds: [] });
+  check(anonSim.status === 401, 'симуляция без cookie — 401', `HTTP ${anonSim.status}`);
+
+  console.log('\n9. Чего быть не должно');
   const bad = await get(`/api/releases/${target.id}/forecast?targetDate=2026-02-30`, cookie);
   check(bad.status === 422, 'тридцатое февраля отклонено, а не перекатано в март', `HTTP ${bad.status}`);
 
