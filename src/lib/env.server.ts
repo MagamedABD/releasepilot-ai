@@ -21,7 +21,18 @@ const schema = z.object({
   APP_MODE: z.enum(['demo', 'corporate']).default('demo'),
   LLM_PAYLOAD_LEVEL: z.enum(['metrics', 'titles', 'full']).default('metrics'),
   ANTHROPIC_API_KEY: z.string().optional(),
-  ANTHROPIC_MODEL_MAIN: z.string().default('claude-sonnet-4-6'),
+  /**
+   * Две модели, а не одна: рассуждение о релизе и переформулировка
+   * реплики стоят по-разному, и платить за вторую как за первую незачем.
+   *
+   * MAIN ведёт разбор — там, где ошибка в выводе дороже лишних токенов.
+   * Opus 4.7 меняет правила вызова: `temperature`, `top_p`, `top_k` и
+   * `budget_tokens` дают 400, а не молча игнорируются, и содержимое
+   * размышлений приходит пустым, пока не задан `display: 'summarized'`.
+   * Учтено в слое агента — здесь важно, что строка идентификатора точная
+   * и без суффикса даты.
+   */
+  ANTHROPIC_MODEL_MAIN: z.string().default('claude-opus-4-7'),
   ANTHROPIC_MODEL_LIGHT: z.string().default('claude-haiku-4-5'),
   AGENT_DAILY_LIMIT: z.coerce.number().int().positive().default(50),
 });
