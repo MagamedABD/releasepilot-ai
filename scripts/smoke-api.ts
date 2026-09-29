@@ -188,7 +188,58 @@ async function main() {
       forecast?.percentiles?.map((p) => `P${p.probability * 100} ${p.date}`).join(' · '),
   );
 
-  console.log('\n6. Вопрос «успеем ли к …» (FR-23)');
+  console.log('\n6. Узкие выборки');
+  const tl = await get(`/api/releases/${target.id}/team-load`, cookie);
+  type TeamLoadView = {
+    remainingWorkingDays: number;
+    teams: { teamName: string; remainingH: number; load: number | null; hasCapacity: boolean }[];
+  };
+  const teamLoad = tl.body as TeamLoadView;
+  check(tl.status === 200, 'загрузка команд отдана', `HTTP ${tl.status}`);
+  // Те же числа, что и в метриках: узкая выборка не должна считать иначе.
+  check(
+    teamLoad?.teams?.length === metrics?.teamLoad?.length &&
+      teamLoad.teams.every((t, i) => t.load === metrics.teamLoad[i].load),
+    'совпадает с загрузкой из метрик',
+  );
+  console.log(
+    `     ${teamLoad?.remainingWorkingDays}д в запасе · ` +
+      teamLoad?.teams
+        ?.map((t) => `${t.teamName} ${t.hasCapacity ? `${Math.round((t.load ?? 0) * 100)}%` : 'нет ёмкости'}`)
+        .join(' · '),
+  );
+
+  const bl = await get(`/api/releases/${target.id}/blockers`, cookie);
+  type BlockersView = {
+    blockers: { task: { id: string; key: string | null; title: string | null }; blockedDays: number; blocksCount: number; isStale: boolean }[];
+    criticalChain: { days: number; tasks: { key: string | null; title: string | null }[] };
+  };
+  const blockers = bl.body as BlockersView;
+  check(bl.status === 200, 'блокеры отданы', `HTTP ${bl.status}`);
+  check(
+    blockers?.blockers?.length === metrics?.blockers?.length,
+    'блокеров столько же, сколько в метриках',
+  );
+  /*
+    Главное, ради чего этот эндпоинт отдельный: задачи названы. По списку
+    UUID экран блокеров нечитаем, а названия лежат в том же снимке.
+  */
+  check(
+    blockers?.blockers?.every((b) => b.task.key !== null && b.task.title !== null),
+    'у каждого блокера есть ключ и название',
+  );
+  check(
+    blockers?.criticalChain?.tasks?.length > 0 &&
+      blockers.criticalChain.tasks.every((t) => t.key !== null),
+    `критическая цепочка названа: ${blockers?.criticalChain?.tasks?.length} задач`,
+  );
+  for (const b of blockers?.blockers ?? []) {
+    console.log(
+      `     ${b.task.key} ${b.task.title} — ${b.blockedDays}д, держит ${b.blocksCount}${b.isStale ? ', застарелый' : ''}`,
+    );
+  }
+
+  console.log('\n7. Вопрос «успеем ли к …» (FR-23)');
   // Чем позже дата, тем выше вероятность. Немонотонность означала бы, что
   // распределение считается не по одному и тому же прогону.
   const probes = [0, 7, 21, 60].map((d) => {
@@ -208,7 +259,7 @@ async function main() {
     'вероятность не убывает с отдалением срока',
   );
 
-  console.log('\n7. Чего быть не должно');
+  console.log('\n8. Чего быть не должно');
   const bad = await get(`/api/releases/${target.id}/forecast?targetDate=2026-02-30`, cookie);
   check(bad.status === 422, 'тридцатое февраля отклонено, а не перекатано в март', `HTTP ${bad.status}`);
 
