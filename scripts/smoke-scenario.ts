@@ -57,7 +57,8 @@ function isoDay(offset: number): string {
 
 type Row = { id: string };
 
-const created = { releases: [] as string[], capacity: null as null | { team: string; from: string; to: string } };
+type Window = { team: string; from: string; to: string };
+const created = { releases: [] as string[], capacity: [] as Window[] };
 
 async function main() {
   console.log(`База: ${BASE}\n`);
@@ -173,7 +174,7 @@ async function main() {
   const capacity = await admin<{ available_hours: number }[]>(
     `team_capacity?team_id=eq.${team.id}&period_start=eq.${from}&period_end=eq.${planned}&select=available_hours`,
   );
-  created.capacity = { team: team.id, from, to: planned };
+  created.capacity.push({ team: team.id, from, to: planned });
   check(
     capacity.length === 1 && Number(capacity[0].available_hours) === 16,
     `ёмкость ${from}…${planned}: +16ч`,
@@ -250,7 +251,61 @@ async function main() {
     'снятой связи в списке нет',
   );
 
-  console.log('\n7. Чего быть не должно');
+  console.log('\n7. Ёмкость команды (FR-17)');
+  /*
+    Окно берётся заведомо далёкое и своё: запись на окно расчёта уже
+    существует у демо-данных, а PUT её заменяет — и демо-картина, на
+    которой держится показ, изменилась бы молча.
+  */
+  const capFrom = isoDay(200);
+  const capTo = isoDay(230);
+  const put = (hours: number, cookieValue = cookie, body?: unknown) =>
+    get(`/api/teams/${team.id}/capacity`, cookieValue, {
+      method: 'PUT',
+      body: JSON.stringify(body ?? { periodStart: capFrom, periodEnd: capTo, availableHours: hours }),
+    });
+
+  type Cap = { id: string; availableHours: number; periodStart: string; periodEnd: string };
+  const first = await put(80);
+  created.capacity.push({ team: team.id, from: capFrom, to: capTo });
+  check(
+    first.status === 200 && (first.body as Cap)?.availableHours === 80,
+    'ёмкость задана: 80ч',
+    `HTTP ${first.status}`,
+  );
+
+  // Ровно то, чем PUT отличается от применения сценария: замена, не
+  // сложение. Если бы часы складывались, «задать 50» давало бы 130.
+  const second = await put(50);
+  check(
+    second.status === 200 && (second.body as Cap)?.availableHours === 50,
+    'повторный PUT заменил часы, а не сложил',
+    `HTTP ${second.status}: ${(second.body as Cap)?.availableHours}ч`,
+  );
+  check(
+    (first.body as Cap)?.id === (second.body as Cap)?.id,
+    'запись та же — адресуется тройкой «команда, начало, конец»',
+  );
+
+  const listed = await get(
+    `/api/teams/${team.id}/capacity?from=${capFrom}&to=${capTo}`,
+    cookie,
+  );
+  check(
+    (listed.body as Cap[])?.filter((c) => c.periodStart === capFrom).length === 1,
+    'в выборке по рамкам она одна',
+  );
+
+  const flipped = await put(10, cookie, {
+    periodStart: capTo,
+    periodEnd: capFrom,
+    availableHours: 10,
+  });
+  check(flipped.status === 422, 'перевёрнутый период — 422', `HTTP ${flipped.status}`);
+  const anonPut = await put(10, '');
+  check(anonPut.status === 401, 'PUT без cookie — 401', `HTTP ${anonPut.status}`);
+
+  console.log('\n8. Чего быть не должно');
   const anon = await post(`/api/scenarios/${scenarioId}/apply`, '');
   check(anon.status === 401, 'без cookie — 401', `HTTP ${anon.status}`);
   const absent = await post('/api/scenarios/00000000-0000-4000-8000-000000000000/apply', cookie);
@@ -259,8 +314,7 @@ async function main() {
 
 /** Уборка. Идёт всегда: временные данные не должны пережить упавшую проверку. */
 async function cleanup() {
-  if (created.capacity) {
-    const { team, from, to } = created.capacity;
+  for (const { team, from, to } of created.capacity) {
     await admin(`team_capacity?team_id=eq.${team}&period_start=eq.${from}&period_end=eq.${to}`, { method: 'DELETE' });
   }
   if (created.releases.length) {

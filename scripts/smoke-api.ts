@@ -141,7 +141,13 @@ async function main() {
   const tl = await get(`/api/releases/${target.id}/team-load`, cookie);
   type TeamLoadView = {
     remainingWorkingDays: number;
-    teams: { teamName: string; remainingH: number; load: number | null; hasCapacity: boolean }[];
+    teams: {
+      teamId: string;
+      teamName: string;
+      remainingH: number;
+      load: number | null;
+      hasCapacity: boolean;
+    }[];
   };
   const teamLoad = tl.body as TeamLoadView;
   check(tl.status === 200, 'загрузка команд отдана', `HTTP ${tl.status}`);
@@ -188,7 +194,51 @@ async function main() {
     );
   }
 
-  console.log('\n7. Вопрос «успеем ли к …» (FR-23)');
+  console.log('\n7. Команды и ёмкость (FR-17)');
+  type TeamRef = { id: string; orgId: string; name: string; kind: string };
+  const tms = await get('/api/teams', cookie);
+  const teams = tms.body as TeamRef[];
+  check(tms.status === 200 && teams?.length > 0, `команды отданы: ${teams?.length}`, `HTTP ${tms.status}`);
+
+  /*
+    Каждая команда из загрузки должна быть в справочнике. Расхождение
+    означало бы, что экран загрузки называет команды, которых в настройках
+    нет, — и настроить им ёмкость было бы негде.
+  */
+  const known = new Set(teams?.map((t) => t.id));
+  check(
+    teamLoad?.teams?.every((t) => known.has(t.teamId)),
+    'команды из загрузки есть в справочнике',
+  );
+
+  const loaded = teamLoad?.teams?.find((t) => t.hasCapacity);
+  const today = new Date().toISOString().slice(0, 10);
+  const cap = await get(`/api/teams/${loaded?.teamId}/capacity?from=${today}`, cookie);
+  type CapacityRow = { teamId: string; periodStart: string; periodEnd: string; availableHours: number };
+  const rows = cap.body as CapacityRow[];
+  check(cap.status === 200, 'ёмкость команды отдана', `HTTP ${cap.status}`);
+  // Загрузка посчиталась — значит, ёмкость на это окно задана, и эндпоинт
+  // обязан её показать. Иначе экран сказал бы «ёмкость не задана» там, где
+  // расчёт её только что использовал.
+  check(
+    rows?.length > 0 && rows.every((r) => r.teamId === loaded?.teamId),
+    `у команды «${loaded?.teamName}» есть запись на окно расчёта`,
+  );
+  for (const r of rows ?? []) {
+    console.log(`     ${r.periodStart}…${r.periodEnd}: ${r.availableHours}ч`);
+  }
+
+  const flipped = await get(
+    `/api/teams/${loaded?.teamId}/capacity?from=2026-12-31&to=2026-01-01`,
+    cookie,
+  );
+  check(flipped.status === 422, 'перевёрнутые рамки — 422', `HTTP ${flipped.status}`);
+  const noTeam = await get('/api/teams/00000000-0000-4000-8000-000000000000/capacity', cookie);
+  check(noTeam.status === 404, 'неизвестная команда — 404', `HTTP ${noTeam.status}`);
+  const noAuth = await get('/api/teams', '');
+  check(noAuth.status === 401, 'справочник без cookie — 401', `HTTP ${noAuth.status}`);
+
+  console.log('\n8. Вопрос «успеем ли к …» (FR-23)');
   // Чем позже дата, тем выше вероятность. Немонотонность означала бы, что
   // распределение считается не по одному и тому же прогону.
   const probes = [0, 7, 21, 60].map((d) => {
@@ -208,7 +258,7 @@ async function main() {
     'вероятность не убывает с отдалением срока',
   );
 
-  console.log('\n8. What-if (FR-31, FR-33)');
+  console.log('\n9. What-if (FR-31, FR-33)');
   type Side = {
     metrics: { riskScore: number; riskLevel: string; teamLoad: { teamId: string; load: number | null }[] };
     forecast: { probabilityOnTime: number | null; expectedDate: string | null };
@@ -268,7 +318,7 @@ async function main() {
   const anonSim = await post(`/api/releases/${target.id}/simulate`, '', { excludeTaskIds: [] });
   check(anonSim.status === 401, 'симуляция без cookie — 401', `HTTP ${anonSim.status}`);
 
-  console.log('\n9. Чего быть не должно');
+  console.log('\n10. Чего быть не должно');
   const bad = await get(`/api/releases/${target.id}/forecast?targetDate=2026-02-30`, cookie);
   check(bad.status === 422, 'тридцатое февраля отклонено, а не перекатано в март', `HTTP ${bad.status}`);
 
