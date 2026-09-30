@@ -238,7 +238,84 @@ async function main() {
   const noAuth = await get('/api/teams', '');
   check(noAuth.status === 401, 'справочник без cookie — 401', `HTTP ${noAuth.status}`);
 
-  console.log('\n8. Вопрос «успеем ли к …» (FR-23)');
+  console.log('\n8. История поставки (FR-36, FR-38)');
+  const orgId = teams?.[0]?.orgId;
+  type Delivery = {
+    delivery: {
+      released: number;
+      onTime: number;
+      onTimePct: number | null;
+      avgDelayDays: number | null;
+      avgDeviationDays: number | null;
+      worstDelay: { name: string; delayDays: number } | null;
+      cancelled: number;
+      postponed: number;
+      inFlight: number;
+      releasedWithoutDate: number;
+      records: { name: string; plannedDate: string; releasedDate: string; deviationDays: number }[];
+    };
+    snapshots: { count: number; from: string | null; to: string | null };
+  };
+  const an = await get(`/api/analytics/releases?orgId=${orgId}`, cookie);
+  const { delivery, snapshots } = an.body as Delivery;
+  check(an.status === 200, 'история отдана', `HTTP ${an.status}`);
+  /*
+    Прогноз выше выбрал метод monte_carlo, а он требует истории. Значит,
+    выпущенные релизы есть, и аналитика обязана их видеть: расхождение
+    означало бы, что «историей» два эндпоинта называют разное.
+  */
+  check(
+    delivery?.released > 0 && delivery.records.length === delivery.released,
+    `выпущенных релизов ${delivery?.released}, столько же записей`,
+  );
+  check(
+    delivery?.records?.every((r, i, all) => i === 0 || all[i - 1].releasedDate <= r.releasedDate),
+    'записи идут по порядку выпуска — это и есть динамика',
+  );
+  // Средняя задержка считается по опоздавшим: без опоздавших она ноль,
+  // с опоздавшими — строго больше нуля, и никогда не отрицательна.
+  const late = delivery?.records?.filter((r) => r.deviationDays > 0).length ?? 0;
+  check(
+    late === 0 ? delivery?.avgDelayDays === 0 : (delivery?.avgDelayDays ?? 0) > 0,
+    `опоздавших ${late}, средняя задержка ${delivery?.avgDelayDays}д`,
+  );
+  console.log(
+    `     в срок ${delivery?.onTime}/${delivery?.released} (${delivery?.onTimePct}%) · ` +
+      `отклонение ${delivery?.avgDeviationDays}д · отменено ${delivery?.cancelled} · в работе ${delivery?.inFlight}`,
+  );
+  if (delivery?.worstDelay) {
+    console.log(`     худший: ${delivery.worstDelay.name} — ${delivery.worstDelay.delayDays}д`);
+  }
+  for (const r of delivery?.records ?? []) {
+    console.log(
+      `     ${r.name}: план ${r.plannedDate} → ${r.releasedDate} (${r.deviationDays > 0 ? '+' : ''}${r.deviationDays}д)`,
+    );
+  }
+  /*
+    Охват снимков отдаётся рядом с историей намеренно. Повторяющиеся
+    причины задержек (FR-37) считаются по снимкам, и пока их нет, ответ
+    говорит «нечем», а не отдаёт пустой список, который читался бы как
+    «причин не было».
+  */
+  check(
+    typeof snapshots?.count === 'number',
+    `снимков метрик ${snapshots?.count}`,
+    snapshots?.count === 0 ? 'причины задержек ждут ежедневной записи (FR-39)' : `${snapshots?.from}…${snapshots?.to}`,
+  );
+
+  const noOrg = await get('/api/analytics/releases', cookie);
+  check(noOrg.status === 422, 'без организации — 422, а не история двух сразу', `HTTP ${noOrg.status}`);
+  const alien = await get(
+    '/api/analytics/releases?orgId=00000000-0000-4000-8000-000000000000',
+    cookie,
+  );
+  check(
+    alien.status === 200 && (alien.body as Delivery)?.delivery?.released === 0,
+    'чужая организация — пустая история, а не отказ',
+    `HTTP ${alien.status}`,
+  );
+
+  console.log('\n9. Вопрос «успеем ли к …» (FR-23)');
   // Чем позже дата, тем выше вероятность. Немонотонность означала бы, что
   // распределение считается не по одному и тому же прогону.
   const probes = [0, 7, 21, 60].map((d) => {
@@ -258,7 +335,7 @@ async function main() {
     'вероятность не убывает с отдалением срока',
   );
 
-  console.log('\n9. What-if (FR-31, FR-33)');
+  console.log('\n10. What-if (FR-31, FR-33)');
   type Side = {
     metrics: { riskScore: number; riskLevel: string; teamLoad: { teamId: string; load: number | null }[] };
     forecast: { probabilityOnTime: number | null; expectedDate: string | null };
@@ -318,7 +395,7 @@ async function main() {
   const anonSim = await post(`/api/releases/${target.id}/simulate`, '', { excludeTaskIds: [] });
   check(anonSim.status === 401, 'симуляция без cookie — 401', `HTTP ${anonSim.status}`);
 
-  console.log('\n10. Чего быть не должно');
+  console.log('\n11. Чего быть не должно');
   const bad = await get(`/api/releases/${target.id}/forecast?targetDate=2026-02-30`, cookie);
   check(bad.status === 422, 'тридцатое февраля отклонено, а не перекатано в март', `HTTP ${bad.status}`);
 
