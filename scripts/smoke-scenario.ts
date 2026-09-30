@@ -30,7 +30,7 @@ if (!PASSWORD) {
   process.exit(1);
 }
 
-const { get, post, del } = request(BASE);
+const { get, post, del, form } = request(BASE);
 
 let failures = 0;
 function check(passed: boolean, what: string, detail = '') {
@@ -58,7 +58,11 @@ function isoDay(offset: number): string {
 type Row = { id: string };
 
 type Window = { team: string; from: string; to: string };
-const created = { releases: [] as string[], capacity: [] as Window[] };
+const created = {
+  releases: [] as string[],
+  capacity: [] as Window[],
+  runs: [] as string[],
+};
 
 async function main() {
   console.log(`База: ${BASE}\n`);
@@ -305,7 +309,98 @@ async function main() {
   const anonPut = await put(10, '');
   check(anonPut.status === 401, 'PUT без cookie — 401', `HTTP ${anonPut.status}`);
 
-  console.log('\n8. Чего быть не должно');
+  console.log('\n8. Импорт из файла: запись (FR-41)');
+  /*
+    Пробный прогон проверяется в smoke:api — он ничего не пишет. Здесь
+    проверяется то, что пробным прогоном проверить нельзя: что задачи
+    действительно заводятся, что повторная загрузка того же файла
+    обновляет их, а не удваивает, и что запуск импорта попадает в
+    историю. Задачи заводятся в релиз проверки, поэтому уборка их унесёт.
+  */
+  const importCsv = (estimate: string) =>
+    [
+      'ключ;название;оценка;статус;команда;релиз;blocks',
+      `IMP-${stamp}-1;Импортированный блокер;${estimate};в работе;${team.name};smoke ${stamp};IMP-${stamp}-2`,
+      `IMP-${stamp}-2;Импортированная зависимая;4;открыта;${team.name};smoke ${stamp};`,
+    ].join('\n');
+
+  const upload = (text: string) => {
+    const body = new FormData();
+    body.set('file', new File([text], 'tasks.csv', { type: 'text/csv' }));
+    body.set('projectId', demo.project_id);
+    return form('/api/import/file', cookie, body);
+  };
+
+  type Report = {
+    runId: string;
+    status: string;
+    stats: { records: number; created: number; updated: number; dependencies: number; skipped: number; errors: number };
+    errors: { line: number; message: string }[];
+  };
+
+  const imported = await upload(importCsv('8'));
+  const firstRun = imported.body as Report;
+  if (firstRun?.runId) created.runs.push(firstRun.runId);
+  check(
+    imported.status === 200 && firstRun?.status === 'success' && firstRun.stats.created === 2,
+    `импортировано ${firstRun?.stats?.created} задач`,
+    `HTTP ${imported.status}, статус ${firstRun?.status}`,
+  );
+  check(firstRun?.stats?.dependencies === 1, 'связь из файла создана');
+
+  const [impTask] = await admin<
+    { id: string; release_id: string; team_id: string; estimate_h: number; status: string }[]
+  >(`tasks?external_key=eq.IMP-${stamp}-1&select=id,release_id,team_id,estimate_h,status`);
+  check(
+    impTask?.release_id === source.id && impTask?.team_id === team.id,
+    'релиз и команда найдены по именам из файла',
+  );
+  check(impTask?.status === 'in_progress', 'статус «в работе» переведён в свой');
+
+  // Повторная загрузка того же файла с другой оценкой: задачи те же,
+  // обновлённые. Если бы импорт заводил их заново, внешний ключ упёрся бы
+  // в уникальное ограничение — или, хуже, задачи удвоились бы.
+  const again3 = await upload(importCsv('12'));
+  const repeatRun = again3.body as Report;
+  if (repeatRun?.runId) created.runs.push(repeatRun.runId);
+  check(
+    repeatRun?.stats?.created === 0 && repeatRun?.stats?.updated === 2,
+    `повтор обновил ${repeatRun?.stats?.updated}, создал ${repeatRun?.stats?.created}`,
+    `статус ${repeatRun?.status}`,
+  );
+  const [reimported] = await admin<{ estimate_h: number }[]>(
+    `tasks?external_key=eq.IMP-${stamp}-1&select=estimate_h`,
+  );
+  check(Number(reimported?.estimate_h) === 12, 'оценка обновилась до 12ч');
+
+  const runs = await admin<{ status: string; stats: { created: number }; error_report: unknown }[]>(
+    `import_runs?id=eq.${firstRun?.runId}&select=status,stats,error_report`,
+  );
+  check(
+    runs[0]?.status === 'success' && runs[0]?.stats?.created === 2,
+    'запуск импорта записан в историю со статистикой',
+  );
+
+  // Файл с ошибкой: годная строка проходит, плохая объясняется, статус
+  // становится partial — и запуск это фиксирует.
+  const mixed = await upload(
+    [
+      'ключ;название;оценка;команда',
+      `IMP-${stamp}-3;Годная;5;${team.name}`,
+      `IMP-${stamp}-4;С чужой командой;5;Девопс`,
+    ].join('\n'),
+  );
+  const mixedRun = mixed.body as Report;
+  if (mixedRun?.runId) created.runs.push(mixedRun.runId);
+  check(
+    mixedRun?.status === 'partial' && mixedRun.stats.created === 1 && mixedRun.stats.errors === 1,
+    'частичный импорт: одна заведена, одна объяснена',
+    `статус ${mixedRun?.status}`,
+  );
+  // Задача без релиза уборкой не унесётся — удаляем по ключу отдельно.
+  await admin(`tasks?external_key=eq.IMP-${stamp}-3`, { method: 'DELETE' });
+
+  console.log('\n9. Чего быть не должно');
   const anon = await post(`/api/scenarios/${scenarioId}/apply`, '');
   check(anon.status === 401, 'без cookie — 401', `HTTP ${anon.status}`);
   const absent = await post('/api/scenarios/00000000-0000-4000-8000-000000000000/apply', cookie);
@@ -316,6 +411,12 @@ async function main() {
 async function cleanup() {
   for (const { team, from, to } of created.capacity) {
     await admin(`team_capacity?team_id=eq.${team}&period_start=eq.${from}&period_end=eq.${to}`, { method: 'DELETE' });
+  }
+  if (created.runs.length) {
+    // Запуски импорта, в отличие от журнала изменений, политикой на
+    // удаление закрыты не намеренно: это история настроек, и оставлять в
+    // ней следы проверки незачем.
+    await admin(`import_runs?id=in.(${created.runs.join(',')})`, { method: 'DELETE' });
   }
   if (created.releases.length) {
     const ids = created.releases.join(',');

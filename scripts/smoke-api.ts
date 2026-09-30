@@ -33,7 +33,7 @@ if (!PASSWORD) {
   process.exit(1);
 }
 
-const { get, post } = request(BASE);
+const { get, post, form } = request(BASE);
 
 let failures = 0;
 function check(passed: boolean, what: string, detail = '') {
@@ -59,7 +59,9 @@ async function main() {
 
   console.log('\n3. Список релизов');
   const list = await get('/api/releases?limit=50', cookie);
-  const releases = list.body as { id: string; name: string; status: string }[] | undefined;
+  const releases = list.body as
+    | { id: string; name: string; status: string; projectId: string }[]
+    | undefined;
   check(list.status === 200 && Array.isArray(releases), 'отдан список', `HTTP ${list.status}`);
   if (!releases?.length) {
     console.log('   Релизов нет. npm run seed:demo');
@@ -335,7 +337,92 @@ async function main() {
     'вероятность не убывает с отдалением срока',
   );
 
-  console.log('\n10. What-if (FR-31, FR-33)');
+  console.log('\n10. Импорт из файла: пробный прогон (FR-41)');
+  /*
+    Пробный прогон ничего не пишет, поэтому проверяется здесь, вместе с
+    остальным чтением. Настоящая запись — в smoke:scenario.
+
+    Файл собран так, чтобы в нём было и хорошее, и плохое: две годные
+    строки, строка без названия, строка с неизвестной командой и строка с
+    повторным ключом. Отчёт обязан назвать каждую по номеру и колонке.
+  */
+  const stamp = Date.now();
+  const csv = [
+    'ключ;название;оценка;статус;приоритет;команда;blocks',
+    `SMOKE-${stamp}-1;Первая годная;8;в работе;critical;Тестирование;SMOKE-${stamp}-2`,
+    `SMOKE-${stamp}-2;Вторая годная;4,5;In Progress;major;;`,
+    `SMOKE-${stamp}-3;;2;;;;`,
+    `SMOKE-${stamp}-4;С чужой командой;3;;;Девопс;`,
+    `SMOKE-${stamp}-1;Повтор ключа;1;;;;`,
+  ].join('\n');
+
+  const body = new FormData();
+  body.set('file', new File([csv], 'tasks.csv', { type: 'text/csv' }));
+  body.set('projectId', target.projectId);
+  body.set('dryRun', 'true');
+  const dry = await form('/api/import/file', cookie, body);
+  type Report = {
+    dryRun: boolean;
+    status: string;
+    stats: {
+      records: number;
+      created: number;
+      updated: number;
+      dependencies: number;
+      skipped: number;
+      errors: number;
+    };
+    errors: { line: number; field: string | null; message: string }[];
+  };
+  const report = dry.body as Report;
+  check(dry.status === 200 && report?.dryRun === true, 'отчёт получен', `HTTP ${dry.status}`);
+  check(report?.status === 'partial', `статус ${report?.status}`, 'часть строк годна, часть нет');
+  // Арифметика отчёта должна сходиться по построению: пропущено — это
+  // разность, а не отдельно посчитанное число.
+  check(
+    report?.stats?.records === 5 &&
+      report.stats.created === 2 &&
+      report.stats.skipped === report.stats.records - report.stats.created - report.stats.updated,
+    `записей ${report?.stats?.records}, годных ${report?.stats?.created}, пропущено ${report?.stats?.skipped}`,
+  );
+  check(
+    report?.stats?.dependencies === 1,
+    'связь из колонки blocks разрешилась внутри файла',
+  );
+  check(
+    report?.errors?.map((e) => `${e.line}:${e.field}`).join(' ') === '4:title 5:team 6:key',
+    'каждая плохая строка названа по номеру и колонке',
+    report?.errors?.map((e) => `${e.line}:${e.field}`).join(' '),
+  );
+  for (const e of report?.errors ?? []) {
+    console.log(`     строка ${e.line} · ${e.field ?? '—'} · ${e.message}`);
+  }
+
+  // Пробный прогон обязан быть бесследным: ни задач, ни запусков.
+  const after = await get(`/api/tasks?q=SMOKE-${stamp}`, cookie);
+  check(
+    (after.body as unknown[])?.length === 0,
+    'пробный прогон ничего не записал',
+    `найдено ${(after.body as unknown[])?.length}`,
+  );
+
+  const noFile = new FormData();
+  noFile.set('projectId', target.projectId);
+  const noFileRes = await form('/api/import/file', cookie, noFile);
+  check(noFileRes.status === 422, 'без файла — 422', `HTTP ${noFileRes.status}`);
+
+  const wrongType = new FormData();
+  wrongType.set('file', new File(['ключ\nPAY-1'], 'tasks.txt', { type: 'text/plain' }));
+  wrongType.set('projectId', target.projectId);
+  const unknown = await form('/api/import/file', cookie, wrongType);
+  check(unknown.status === 422, 'неизвестное расширение — 422', `HTTP ${unknown.status}`);
+
+  const anonImport = new FormData();
+  anonImport.set('projectId', target.projectId);
+  const anonRes = await form('/api/import/file', '', anonImport);
+  check(anonRes.status === 401, 'импорт без cookie — 401', `HTTP ${anonRes.status}`);
+
+  console.log('\n11. What-if (FR-31, FR-33)');
   type Side = {
     metrics: { riskScore: number; riskLevel: string; teamLoad: { teamId: string; load: number | null }[] };
     forecast: { probabilityOnTime: number | null; expectedDate: string | null };
@@ -395,7 +482,7 @@ async function main() {
   const anonSim = await post(`/api/releases/${target.id}/simulate`, '', { excludeTaskIds: [] });
   check(anonSim.status === 401, 'симуляция без cookie — 401', `HTTP ${anonSim.status}`);
 
-  console.log('\n11. Чего быть не должно');
+  console.log('\n12. Чего быть не должно');
   const bad = await get(`/api/releases/${target.id}/forecast?targetDate=2026-02-30`, cookie);
   check(bad.status === 422, 'тридцатое февраля отклонено, а не перекатано в март', `HTTP ${bad.status}`);
 

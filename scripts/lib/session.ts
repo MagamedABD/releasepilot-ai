@@ -86,5 +86,28 @@ export function request(base: string) {
     return get(path, cookie, { method: 'DELETE' });
   }
 
-  return { get, post, del };
+  /**
+   * Отправка формы.
+   *
+   * Отдельно от `post`, потому что `Content-Type` для multipart ставит
+   * сам fetch — вместе с границей частей. Задай его руками, и тело
+   * станет нечитаемым: границы в заголовке и в теле разойдутся.
+   */
+  async function form(path: string, cookie: string, data: FormData): Promise<Result> {
+    const res = await fetch(`${base}${path}`, { method: 'POST', headers: { cookie }, body: data });
+    const text = await res.text();
+    let body: unknown = text;
+    try {
+      const parsed = JSON.parse(text) as unknown;
+      body =
+        parsed && typeof parsed === 'object' && 'data' in parsed
+          ? (parsed as { data: unknown }).data
+          : parsed;
+    } catch {
+      /* не JSON — оставляем текстом */
+    }
+    return { status: res.status, body };
+  }
+
+  return { get, post, del, form };
 }
