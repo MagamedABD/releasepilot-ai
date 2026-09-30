@@ -19,7 +19,33 @@ describe('taskCreateSchema', () => {
     const base = { projectId: PROJECT, title: 'Задача' };
     expect(taskCreateSchema.safeParse({ ...base, estimateH: -1 }).success).toBe(false);
     expect(taskCreateSchema.safeParse({ ...base, estimateH: 100_000 }).success).toBe(false);
-    expect(taskCreateSchema.safeParse({ ...base, estimateH: 0 }).success).toBe(true);
+    expect(taskCreateSchema.safeParse({ ...base, estimateH: 0.5 }).success).toBe(true);
+  });
+
+  /*
+    Нулевая оценка отклоняется схемой, а не базой. База её тоже не
+    принимает (`check (estimate_h > 0)`), но её отказ превращается в
+    ответ «значение не прошло проверку на стороне базы» — без имени поля
+    и без объяснения. Проверка здесь нужна не вместо базы, а чтобы
+    ответ называл поле.
+  */
+  it('нулевая оценка называет поле, а не доходит до базы', () => {
+    const r = taskCreateSchema.safeParse({ projectId: PROJECT, title: 'Задача', estimateH: 0 });
+    expect(r.success).toBe(false);
+    expect(r.success === false && r.error.issues[0].path).toEqual(['estimateH']);
+    expect(r.success === false && r.error.issues[0].message).toBe(
+      'Оценка должна быть больше нуля',
+    );
+  });
+
+  it('нулевые затраты законны: к работе могли не приступать', () => {
+    const r = taskCreateSchema.safeParse({
+      projectId: PROJECT,
+      title: 'Задача',
+      estimateH: 8,
+      spentH: 0,
+    });
+    expect(r.success).toBe(true);
   });
 
   it('не принимает пустое название после обрезки пробелов', () => {
