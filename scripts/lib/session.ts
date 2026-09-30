@@ -82,5 +82,9 @@ export function request(base: string) {
     });
   }
 
-  return { get, post };
+  function del(path: string, cookie: string): Promise<Result> {
+    return get(path, cookie, { method: 'DELETE' });
+  }
+
+  return { get, post, del };
 }

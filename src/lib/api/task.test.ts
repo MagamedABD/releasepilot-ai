@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { toApiTask, toInsert, toUpdate } from './task';
+import { toApiDependency, toApiTask, toInsert, toUpdate } from './task';
 import type { Database } from '@/lib/database.types';
 
 type TaskRow = Database['public']['Tables']['tasks']['Row'];
@@ -163,5 +163,28 @@ describe('toApiTask', () => {
 
   it('признак блокировки выводится из отметки', () => {
     expect(toApiTask(row({ blocked_since: EARLIER })).blocked).toBe(true);
+  });
+});
+
+describe('toApiDependency', () => {
+  it('отдаёт пару и тип, без org_id', () => {
+    const api = toApiDependency({
+      id: '66666666-6666-4666-8666-666666666666',
+      org_id: ORG,
+      blocker_task_id: 'a',
+      blocked_task_id: 'b',
+      type: 'blocks',
+      created_at: NOW,
+    });
+
+    // Организация наружу не уходит: клиент её не спрашивал, а знание о
+    // том, в какой организации лежит запись, ему ничего не даёт.
+    expect(api).toEqual({
+      id: '66666666-6666-4666-8666-666666666666',
+      blockerTaskId: 'a',
+      blockedTaskId: 'b',
+      type: 'blocks',
+      createdAt: NOW,
+    });
   });
 });

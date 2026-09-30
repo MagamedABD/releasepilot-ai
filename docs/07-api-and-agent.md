@@ -29,12 +29,16 @@
 | `GET` | `/api/releases/:id/team-load` | загрузка команд | member |
 | `GET` | `/api/releases/:id/blockers` | блокеры и критическая цепочка | member |
 | `POST` | `/api/releases/:id/simulate` | what-if расчёт (без записи) | member |
+| `GET` | `/api/releases/:id/scenarios` | сохранённые сценарии релиза | member |
+| `POST` | `/api/releases/:id/scenarios` | сохранить сценарий с эффектом | manager+ |
 | `POST` | `/api/scenarios/:id/apply` | применить сценарий | manager+ |
 | `GET` | `/api/tasks` | список с фильтрами и поиском | member |
 | `POST` | `/api/tasks` | создать задачу | manager+ |
 | `PATCH` | `/api/tasks/:id` | изменить задачу | manager+ / lead |
 | `DELETE` | `/api/tasks/:id` | удалить задачу | manager+ |
+| `GET` | `/api/tasks/:id/dependencies` | связи задачи обеими сторонами | member |
 | `POST` | `/api/tasks/:id/dependencies` | добавить связь | manager+ |
+| `DELETE` | `/api/tasks/:id/dependencies` | снять связь | manager+ |
 | `GET` | `/api/teams`, `/api/teams/:id/capacity` | команды и ёмкость | member |
 | `PUT` | `/api/teams/:id/capacity` | задать ёмкость | manager+ / lead |
 | `GET` | `/api/analytics/releases` | история и тренды | member |

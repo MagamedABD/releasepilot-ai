@@ -30,7 +30,7 @@ if (!PASSWORD) {
   process.exit(1);
 }
 
-const { get, post } = request(BASE);
+const { get, post, del } = request(BASE);
 
 let failures = 0;
 function check(passed: boolean, what: string, detail = '') {
@@ -208,7 +208,49 @@ async function main() {
   const [untouched] = await admin<{ release_id: string | null }[]>(`tasks?id=eq.${hub.id}&select=release_id`);
   check(untouched?.release_id === source.id, 'транзакция откатилась: блокер остался на месте');
 
-  console.log('\n6. Чего быть не должно');
+  console.log('\n6. Связи задач (FR-13)');
+  type Dep = { blockerTaskId: string; blockedTaskId: string; type: string };
+  const deps = await get(`/api/tasks/${hub.id}/dependencies`, cookie);
+  check(
+    deps.status === 200 && (deps.body as Dep[]).some((d) => d.blockedTaskId === held.id),
+    'связи задачи отданы обеими сторонами',
+    `HTTP ${deps.status}`,
+  );
+
+  // Обратная связь замкнула бы кольцо из двух звеньев. Ловит это триггер
+  // в базе, а не приложение: проверка в приложении читает граф до
+  // вставки и расходится с чужой параллельной вставкой.
+  const cycle = await post(`/api/tasks/${held.id}/dependencies`, cookie, { blocksTaskId: hub.id });
+  check(cycle.status === 409, 'цикл отклонён — 409, а не 500', `HTTP ${cycle.status}`);
+
+  const self = await post(`/api/tasks/${hub.id}/dependencies`, cookie, { blocksTaskId: hub.id });
+  check(self.status === 422, 'зависимость от себя названа полем — 422', `HTTP ${self.status}`);
+
+  const added = await post(`/api/tasks/${hub.id}/dependencies`, cookie, {
+    blockedByTaskId: free.id,
+  });
+  const dep = added.body as Dep;
+  check(
+    added.status === 201 && dep?.blockerTaskId === free.id && dep?.blockedTaskId === hub.id,
+    'направление «зависит от» сохранено как пара',
+    `HTTP ${added.status}`,
+  );
+  const twice = await post(`/api/tasks/${hub.id}/dependencies`, cookie, {
+    blockedByTaskId: free.id,
+  });
+  check(twice.status === 409, 'повтор той же связи — 409', `HTTP ${twice.status}`);
+
+  const removed = await del(`/api/tasks/${hub.id}/dependencies?blockedByTaskId=${free.id}`, cookie);
+  check(removed.status === 204, 'связь снята — 204', `HTTP ${removed.status}`);
+  const again2 = await del(`/api/tasks/${hub.id}/dependencies?blockedByTaskId=${free.id}`, cookie);
+  check(again2.status === 204, 'повторное снятие — тоже 204', `HTTP ${again2.status}`);
+  const left = await get(`/api/tasks/${hub.id}/dependencies`, cookie);
+  check(
+    (left.body as Dep[]).every((d) => d.blockerTaskId !== free.id),
+    'снятой связи в списке нет',
+  );
+
+  console.log('\n7. Чего быть не должно');
   const anon = await post(`/api/scenarios/${scenarioId}/apply`, '');
   check(anon.status === 401, 'без cookie — 401', `HTTP ${anon.status}`);
   const absent = await post('/api/scenarios/00000000-0000-4000-8000-000000000000/apply', cookie);

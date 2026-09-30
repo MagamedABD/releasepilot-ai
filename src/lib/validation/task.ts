@@ -145,3 +145,50 @@ export const taskQuerySchema = z.object({
 export type TaskCreateInput = z.infer<typeof taskCreateSchema>;
 export type TaskUpdateInput = z.infer<typeof taskUpdateSchema>;
 export type TaskQuery = z.infer<typeof taskQuerySchema>;
+
+/**
+ * Связь между задачами (FR-13).
+ *
+ * Направление задаётся полем, а не порядком аргументов. В карточке задачи
+ * добавляют связи обеих сторон — «блокирует» и «зависит от», — и если бы
+ * тело содержало просто `taskId`, направление пришлось бы додумывать из
+ * адреса. Додуманное направление ошибочно ровно в половине случаев, и
+ * ошибка эта тихая: связь создастся, просто наоборот.
+ *
+ * Ровно одно из двух полей, не оба: связь между парой задач одна, и
+ * присланные вместе `blocksTaskId` и `blockedByTaskId` означают либо
+ * попытку создать цикл из двух звеньев, либо путаницу в клиенте. Оба
+ * случая честнее отклонить, чем выбрать одно поле на своё усмотрение.
+ *
+ * `relates` симметрична по смыслу, но хранится теми же колонками, поэтому
+ * направление требуется и для неё — и остаётся неважным.
+ */
+export const DEPENDENCY_TYPES = ['blocks', 'relates'] as const;
+
+export const dependencyCreateSchema = z
+  .object({
+    /** Задача из адреса блокирует эту. */
+    blocksTaskId: uuid.optional(),
+    /** Задача из адреса ждёт эту. */
+    blockedByTaskId: uuid.optional(),
+    type: z.enum(DEPENDENCY_TYPES, { message: 'Неизвестный тип связи' }).default('blocks'),
+  })
+  .refine((v) => Boolean(v.blocksTaskId) !== Boolean(v.blockedByTaskId), {
+    message: 'Укажите ровно одно поле: blocksTaskId или blockedByTaskId',
+  })
+  /*
+    Два необязательных поля на входе — одна пара значений на выходе.
+
+    Без этого маршруту пришлось бы всюду писать `blocksTaskId ?? blockedByTaskId`
+    и убеждать типы, что хоть одно из них есть. Проверка выше это уже
+    гарантирует, но знает о ней только она сама, поэтому здесь же и
+    приводится к виду, в котором гарантия выражена типом.
+  */
+  .transform((v) => ({
+    type: v.type,
+    otherTaskId: (v.blocksTaskId ?? v.blockedByTaskId) as string,
+    /** Держит ли задача из адреса вторую — или наоборот. */
+    pathTaskBlocks: v.blocksTaskId !== undefined,
+  }));
+
+export type DependencyCreateInput = z.infer<typeof dependencyCreateSchema>;

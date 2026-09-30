@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { taskCreateSchema, taskQuerySchema, taskUpdateSchema } from './task';
+import {
+  dependencyCreateSchema,
+  taskCreateSchema,
+  taskQuerySchema,
+  taskUpdateSchema,
+} from './task';
 
 const PROJECT = '5d50e8b5-b3b1-4678-abf3-2ed7b110e553';
 
@@ -79,5 +84,44 @@ describe('taskQuerySchema', () => {
   it('держит потолок выборки', () => {
     expect(taskQuerySchema.safeParse({ limit: '1000000' }).success).toBe(false);
     expect(taskQuerySchema.parse({}).limit).toBe(50);
+  });
+});
+
+describe('dependencyCreateSchema', () => {
+  const A = '11111111-1111-4111-8111-111111111111';
+
+  it('приводит направление к паре «кто держит — кого держат»', () => {
+    expect(dependencyCreateSchema.parse({ blocksTaskId: A })).toEqual({
+      otherTaskId: A,
+      pathTaskBlocks: true,
+      type: 'blocks',
+    });
+    expect(dependencyCreateSchema.parse({ blockedByTaskId: A })).toMatchObject({
+      otherTaskId: A,
+      pathTaskBlocks: false,
+    });
+  });
+
+  /*
+    Ни одного поля и оба сразу отвергаются одинаково, и это не
+    придирчивость. Пустое тело — потерянный запрос, а оба поля вместе —
+    либо цикл из двух звеньев, либо путаница в клиенте; выбрать одно из
+    них «на своё усмотрение» значит создать связь, которой не просили.
+  */
+  it('требует ровно одно направление', () => {
+    expect(dependencyCreateSchema.safeParse({}).success).toBe(false);
+    const both = dependencyCreateSchema.safeParse({
+      blocksTaskId: A,
+      blockedByTaskId: '22222222-2222-4222-8222-222222222222',
+    });
+    expect(both.success).toBe(false);
+  });
+
+  it('тип связи по умолчанию — блокировка, неизвестный отвергается', () => {
+    expect(dependencyCreateSchema.parse({ blocksTaskId: A }).type).toBe('blocks');
+    expect(dependencyCreateSchema.parse({ blocksTaskId: A, type: 'relates' }).type).toBe('relates');
+    const bad = dependencyCreateSchema.safeParse({ blocksTaskId: A, type: 'дружит' });
+    expect(bad.success).toBe(false);
+    expect(bad.success === false && bad.error.issues[0].message).toBe('Неизвестный тип связи');
   });
 });

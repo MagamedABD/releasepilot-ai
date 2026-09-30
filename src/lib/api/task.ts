@@ -156,3 +156,31 @@ export function toUpdate(input: TaskUpdateInput, current: TaskRow, now: string):
 
   return patch;
 }
+
+type DependencyRow = Database['public']['Tables']['task_dependencies']['Row'];
+
+/**
+ * Связь между задачами.
+ *
+ * Наружу отдаётся парой «кто держит — кого держат», а не направлением из
+ * запроса. Запрос описывает связь относительно задачи в адресе, ответ —
+ * сама связь, и читать его должно быть одинаково независимо от того, с
+ * какой стороны её добавили.
+ */
+export type ApiDependency = {
+  id: string;
+  blockerTaskId: string;
+  blockedTaskId: string;
+  type: DependencyRow['type'];
+  createdAt: string;
+};
+
+export function toApiDependency(row: DependencyRow): ApiDependency {
+  return {
+    id: row.id,
+    blockerTaskId: row.blocker_task_id,
+    blockedTaskId: row.blocked_task_id,
+    type: row.type,
+    createdAt: row.created_at,
+  };
+}
