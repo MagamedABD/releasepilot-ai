@@ -27,6 +27,53 @@ export type ApiSimulation = {
   delta: ScenarioDelta;
 };
 
+/**
+ * Итог симуляции для хранения в `scenarios.result`.
+ *
+ * Хранится сводка, а не весь расчёт. Полный ответ — это две копии метрик с
+ * причинами и распределением прогноза, и через месяц он всё равно
+ * устареет: формулы калибруются, а сохранённые метрики пересчитывать никто
+ * не будет. Сводка же отвечает на единственный вопрос, ради которого её
+ * хранят: что обещал этот сценарий в момент, когда его предложили.
+ */
+export type ScenarioResultSummary = {
+  computedAt: string;
+  before: SideSummary;
+  after: SideSummary;
+  delta: ScenarioDelta;
+};
+
+type SideSummary = {
+  riskScore: number;
+  riskLevel: string;
+  readinessPct: number;
+  probabilityOnTime: number | null;
+  expectedDate: string | null;
+};
+
+function summarize(side: ScenarioSide): SideSummary {
+  return {
+    riskScore: side.metrics.riskScore,
+    riskLevel: side.metrics.riskLevel,
+    readinessPct: side.metrics.readinessPct,
+    probabilityOnTime: side.forecast.probabilityOnTime,
+    expectedDate: side.forecast.expectedDate,
+  };
+}
+
+export function toScenarioResult(result: {
+  before: ScenarioSide;
+  after: ScenarioSide;
+  delta: ScenarioDelta;
+}): ScenarioResultSummary {
+  return {
+    computedAt: result.before.metrics.computedAt,
+    before: summarize(result.before),
+    after: summarize(result.after),
+    delta: result.delta,
+  };
+}
+
 export function toApiSide(side: ScenarioSide): ApiScenarioSide {
   return { metrics: toApiMetrics(side.metrics), forecast: toApiForecast(side.forecast) };
 }

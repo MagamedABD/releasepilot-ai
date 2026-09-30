@@ -71,6 +71,18 @@ export function isUuid(value: string): boolean {
   return UUID.test(value);
 }
 
+/**
+ * Нет прав на действие с объектом, который пользователь видит.
+ *
+ * Отдельно от «не найдено» и только там, где объект уже показан: участник
+ * видит сценарий в списке, и ответить ему «такого нет» на «Применить»
+ * значило бы соврать о том, что у него перед глазами. Там, где объект не
+ * виден, по-прежнему 404 (см. `fromPostgres`).
+ */
+export function forbidden(message: string) {
+  return fail(403, 'forbidden', message);
+}
+
 export function notFound() {
   return fail(404, 'not_found', 'Не найдено');
 }

@@ -317,6 +317,11 @@ export type Database = {
         Returns: number;
         Relationships: [];
       };
+      apply_scenario: {
+        Args: { p_scenario: string };
+        Returns: Database['public']['Tables']['scenarios']['Row'];
+        Relationships: [];
+      };
     };
     Enums: {
       app_role: AppRole;

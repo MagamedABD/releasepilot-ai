@@ -21,6 +21,7 @@
  */
 
 import { loadEnv } from './lib/env';
+import { request, sessionCookies, signIn } from './lib/session';
 
 const env = loadEnv();
 const BASE = process.env.SMOKE_BASE_URL ?? 'http://localhost:3000';
@@ -32,84 +33,25 @@ if (!PASSWORD) {
   process.exit(1);
 }
 
+const { get, post } = request(BASE);
+
 let failures = 0;
 function check(passed: boolean, what: string, detail = '') {
   if (!passed) failures += 1;
   console.log(`  ${passed ? '✓' : '✗'} ${what}${detail ? ` — ${detail}` : ''}`);
 }
 
-/**
- * Cookie сессии в формате `@supabase/ssr`.
- *
- * Имя выводится из ссылки на проект, значение — префикс `base64-` и дальше
- * base64url от JSON сессии. Длинные значения браузер не примет целиком,
- * поэтому библиотека режет их на части с суффиксами `.0`, `.1`; порог взят
- * её же — 3180 символов. Собрано это вручную и намеренно: цель проверки —
- * убедиться, что приложение читает настоящую cookie, а не что библиотека
- * согласна сама с собой.
- */
-function sessionCookies(session: Record<string, unknown>): string {
-  const ref = new URL(env.url).hostname.split('.')[0];
-  const name = `sb-${ref}-auth-token`;
-  const encoded =
-    'base64-' + Buffer.from(JSON.stringify(session), 'utf8').toString('base64url');
-
-  if (encoded.length <= 3180) return `${name}=${encoded}`;
-
-  const parts: string[] = [];
-  for (let i = 0; i < encoded.length; i += 3180) {
-    parts.push(`${name}.${parts.length}=${encoded.slice(i, i + 3180)}`);
-  }
-  return parts.join('; ');
-}
-
-type Result = { status: number; body: unknown };
-
-/**
- * Успешный ответ обёрнут: `ok()` отдаёт `{ data }`. Обёртка снимается здесь
- * один раз, чтобы каждая проверка ниже говорила о содержимом, а не о
- * конверте: забытый `.data` даёт `undefined`, а `undefined` тихо проходит
- * половину сравнений.
- */
-async function get(path: string, cookie: string, init: RequestInit = {}): Promise<Result> {
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: { cookie, 'Content-Type': 'application/json' },
-  });
-  const text = await res.text();
-  let body: unknown = text;
-  try {
-    const parsed = JSON.parse(text) as unknown;
-    body =
-      parsed && typeof parsed === 'object' && 'data' in parsed
-        ? (parsed as { data: unknown }).data
-        : parsed;
-  } catch {
-    /* не JSON — оставляем текстом, это само по себе находка */
-  }
-  return { status: res.status, body };
-}
-
-function post(path: string, cookie: string, body: unknown): Promise<Result> {
-  return get(path, cookie, { method: 'POST', body: JSON.stringify(body) });
-}
-
 async function main() {
   console.log(`База: ${BASE}\n`);
 
   console.log('1. Вход по паролю');
-  const tok = await fetch(`${env.url}/auth/v1/token?grant_type=password`, {
-    method: 'POST',
-    headers: { apikey: env.anonKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
-  });
-  const session = (await tok.json()) as Record<string, unknown>;
-  check(Boolean(session.access_token), `сессия для ${EMAIL}`, `HTTP ${tok.status}`);
+  const { status: authStatus, session } = await signIn(env, EMAIL, PASSWORD);
+  check(Boolean(session.access_token), `сессия для ${EMAIL}`, `HTTP ${authStatus}`);
   if (!session.access_token) {
     console.log('   Демо-данные загружены? npm run seed:demo');
     return;
   }
-  const cookie = sessionCookies(session);
+  const cookie = sessionCookies(env, session);
 
   console.log('\n2. Без сессии внутрь не пускают');
   const anon = await get('/api/releases', '');

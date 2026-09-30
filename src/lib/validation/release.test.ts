@@ -6,6 +6,7 @@ import {
   releaseCreateSchema,
   releaseQuerySchema,
   releaseUpdateSchema,
+  scenarioCreateSchema,
   simulateSchema,
 } from './release';
 
@@ -173,5 +174,19 @@ describe('simulateSchema', () => {
 
   it('идентификаторы — только UUID', () => {
     expect(simulateSchema.safeParse({ excludeTaskIds: ['PPT-301'] }).success).toBe(false);
+  });
+});
+
+describe('scenarioCreateSchema', () => {
+  const TASK = '33333333-3333-4333-8333-333333333333';
+
+  it('без релиза назначения задача уходит в бэклог: поле необязательно', () => {
+    const parsed = scenarioCreateSchema.parse({ title: ' Перенос ', excludeTaskIds: [TASK] });
+    expect(parsed).toMatchObject({ title: 'Перенос', moveToReleaseId: null });
+  });
+
+  it('без названия не сохраняется, пустой сценарий — тоже', () => {
+    expect(scenarioCreateSchema.safeParse({ excludeTaskIds: [TASK] }).success).toBe(false);
+    expect(scenarioCreateSchema.safeParse({ title: 'Пусто' }).success).toBe(false);
   });
 });

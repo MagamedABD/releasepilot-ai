@@ -130,39 +130,63 @@ export const forecastQuerySchema = z.object({
  * знает только снимок, и проверяет её домен (`validateScenario`), — схема
  * отвечает за форму, а не за существование.
  */
-export const simulateSchema = z
+const scenarioFields = {
+  excludeTaskIds: z
+    .array(uuid)
+    .max(200, 'Слишком много задач в одном сценарии')
+    // Повтор не ошибка пользователя, а особенность сборки списка на
+    // клиенте; дважды перенести задачу нельзя, так что просто сливаем.
+    .transform((ids) => [...new Set(ids)])
+    .default([]),
+  extraCapacity: z
+    .array(
+      z.object({
+        teamId: uuid,
+        hours: z
+          .number({ message: 'Ожидается число часов' })
+          .positive('Часы должны быть больше нуля')
+          .max(1000, 'Слишком много часов для одного релиза'),
+      }),
+    )
+    .max(50, 'Слишком много команд в одном сценарии')
+    /*
+      Повтор команды, в отличие от повтора задачи, отклоняется: «+10 и
+      +20 часов бэкенду» можно прочитать и как 30, и как опечатку в одной
+      из строк. Угадывать здесь значит молча посчитать не тот сценарий.
+    */
+    .refine((items) => new Set(items.map((i) => i.teamId)).size === items.length, {
+      message: 'Команда указана дважды',
+    })
+    .default([]),
+};
+
+const notEmpty = [
+  (v: { excludeTaskIds: string[]; extraCapacity: unknown[] }) =>
+    v.excludeTaskIds.length > 0 || v.extraCapacity.length > 0,
+  { message: 'Сценарий пуст: укажите задачи для переноса или дополнительные часы' },
+] as const;
+
+export const simulateSchema = z.object(scenarioFields).refine(...notEmpty);
+
+/**
+ * Сохранение сценария (FR-35).
+ *
+ * Сверх симуляции — название и релиз, куда уходят задачи. Для расчёта
+ * исходного релиза место назначения безразлично: задача ушла, и всё. Но
+ * применение его требует — без него задача окажется вне релизов, в
+ * бэклоге, и это тоже законный выбор, поэтому поле необязательно.
+ */
+export const scenarioCreateSchema = z
   .object({
-    excludeTaskIds: z
-      .array(uuid)
-      .max(200, 'Слишком много задач в одном сценарии')
-      // Повтор не ошибка пользователя, а особенность сборки списка на
-      // клиенте; дважды перенести задачу нельзя, так что просто сливаем.
-      .transform((ids) => [...new Set(ids)])
-      .default([]),
-    extraCapacity: z
-      .array(
-        z.object({
-          teamId: uuid,
-          hours: z
-            .number({ message: 'Ожидается число часов' })
-            .positive('Часы должны быть больше нуля')
-            .max(1000, 'Слишком много часов для одного релиза'),
-        }),
-      )
-      .max(50, 'Слишком много команд в одном сценарии')
-      /*
-        Повтор команды, в отличие от повтора задачи, отклоняется: «+10 и
-        +20 часов бэкенду» можно прочитать и как 30, и как опечатку в одной
-        из строк. Угадывать здесь значит молча посчитать не тот сценарий.
-      */
-      .refine((items) => new Set(items.map((i) => i.teamId)).size === items.length, {
-        message: 'Команда указана дважды',
-      })
-      .default([]),
+    ...scenarioFields,
+    title: z
+      .string()
+      .trim()
+      .min(1, 'Укажите название сценария')
+      .max(200, 'Слишком длинное название'),
+    moveToReleaseId: uuid.nullable().default(null),
   })
-  .refine((v) => v.excludeTaskIds.length > 0 || v.extraCapacity.length > 0, {
-    message: 'Сценарий пуст: укажите задачи для переноса или дополнительные часы',
-  });
+  .refine(...notEmpty);
 
 /**
  * Ключ проекта: PPT, PAY2, DEV.
@@ -219,6 +243,7 @@ export type ReleaseUpdateInput = z.infer<typeof releaseUpdateSchema>;
 export type ReleaseQuery = z.infer<typeof releaseQuerySchema>;
 export type ForecastQuery = z.infer<typeof forecastQuerySchema>;
 export type SimulateInput = z.infer<typeof simulateSchema>;
+export type ScenarioCreateInput = z.infer<typeof scenarioCreateSchema>;
 export type ProjectCreateInput = z.infer<typeof projectCreateSchema>;
 export type ProjectUpdateInput = z.infer<typeof projectUpdateSchema>;
 export type ProjectQuery = z.infer<typeof projectQuerySchema>;

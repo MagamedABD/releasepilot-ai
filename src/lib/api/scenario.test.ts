@@ -4,7 +4,7 @@ import { RISK_CONFIG } from '@/domain/config';
 import { canonicalScenario, capacity, snapshot, task } from '@/domain/fixtures';
 import { simulate } from '@/domain/scenario';
 
-import { problemFields, toApiSimulation } from './scenario';
+import { problemFields, toApiSimulation, toScenarioResult } from './scenario';
 
 describe('перевод симуляции в API', () => {
   it('бесконечная загрузка обеих сторон доходит до клиента признаком, а не null', () => {
@@ -49,5 +49,24 @@ describe('отказы по существу → поля ошибки', () => {
       excludeTaskIds: [expect.stringContaining('a'), expect.stringContaining('b')],
       extraCapacity: [expect.stringContaining('t'), expect.stringContaining('прошла')],
     });
+  });
+});
+
+describe('сводка для хранения', () => {
+  it('хранит обещанный эффект и обе стороны, без полного расчёта', () => {
+    const result = simulate(
+      canonicalScenario(),
+      { excludeTaskIds: [], extraCapacity: [{ teamId: 'team-qa', hours: 30 }] },
+      RISK_CONFIG,
+      { completedReleases: 6 },
+    );
+    if (result.kind !== 'ok') throw new Error('сценарий отклонён');
+    const summary = toScenarioResult(result);
+    expect(summary.delta).toEqual(result.delta);
+    expect(summary.before.riskScore).toBe(result.before.metrics.riskScore);
+    expect(summary.after.probabilityOnTime).toBe(result.after.forecast.probabilityOnTime);
+    expect(Object.keys(summary.before).sort()).toEqual(
+      ['expectedDate', 'probabilityOnTime', 'readinessPct', 'riskLevel', 'riskScore'],
+    );
   });
 });
