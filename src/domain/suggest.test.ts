@@ -62,7 +62,8 @@ describe('подбор на каноническом сценарии', () => {
   */
   it('не трогает P0, пока это не разрешено явно', () => {
     const result = suggestScenario(snap, { kind: 'risk_score', target: 10 });
-    const touched = new Set(result.kind === 'ok' ? result.taskIds : result.taskIds);
+    if (result.kind === 'already_met') throw new Error('цель не должна быть уже выполнена');
+    const touched = new Set(result.taskIds);
     expect(touched.has('blocked-p0-a')).toBe(false);
     expect(touched.has('blocked-p0-b')).toBe(false);
 
@@ -72,6 +73,7 @@ describe('подбор на каноническом сценарии', () => {
       undefined,
       { keepPriorities: [], maxTasks: 12 },
     );
+    if (allowed.kind === 'already_met') throw new Error('цель не должна быть уже выполнена');
     expect(allowed.taskIds.length).toBeGreaterThan(0);
   });
 
@@ -115,9 +117,8 @@ describe('блокер уходит вместе с зависимыми', () =>
     const result = suggestScenario(withChain(), { kind: 'risk_level', target: 'low' }, undefined, {
       maxTasks: 5,
     });
-    const group = (result.kind === 'ok' ? result.groups : result.groups).find(
-      (g) => g.taskId === 'hub',
-    );
+    if (result.kind === 'already_met') throw new Error('цель не должна быть уже выполнена');
+    const group = result.groups.find((g) => g.taskId === 'hub');
     if (!group) return; // жадность могла обойтись хвостом — тогда проверять нечего
     // Хвост транзитивный: dep-2 ждёт dep-1, который ждёт hub.
     expect(group.withTaskIds.sort()).toEqual(['dep-1', 'dep-2']);
@@ -133,6 +134,10 @@ describe('блокер уходит вместе с зависимыми', () =>
     });
 
     const result = suggestScenario(snap, { kind: 'risk_score', target: 0 });
+    // Группа целиком неприкосновенна, а частями её нельзя по FR-33 —
+    // предлагать нечего, и подбор это признаёт, а не советует половину.
+    expect(result.kind).toBe('unreachable');
+    if (result.kind !== 'unreachable') return;
     expect(result.taskIds).toEqual([]);
   });
 });
