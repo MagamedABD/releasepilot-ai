@@ -125,3 +125,59 @@ export async function saveScenario(
     delta: simulation.delta,
   };
 }
+
+export type ApplyScenarioResult =
+  | { kind: 'ok'; scenario: ScenarioRow }
+  /** Невидимый или отсутствующий сценарий — для вызывающего это одно и то же. */
+  | { kind: 'not_found' }
+  | { kind: 'already_applied' }
+  | { kind: 'forbidden' }
+  /**
+   * Отказ по существу с текстом для человека: релиз изменился после
+   * расчёта, блокер держит остающиеся задачи, команда исчезла.
+   */
+  | { kind: 'rejected'; message: string }
+  | { kind: 'error'; error: PostgrestError };
+
+/**
+ * Применение сохранённого сценария.
+ *
+ * Вся работа — в функции базы `apply_scenario` (миграция 0003): перенос
+ * задач, ёмкость, отметка о применении и запись в журнал одной
+ * транзакцией. Здесь только перевод её исхода в разбор случаев.
+ *
+ * Как и сохранение, вынесено из маршрута: применяют сценарий и кнопка на
+ * экране, и HTTP-клиент, а правила — какой отказ чем считать — должны
+ * быть одни. Разойдись они, экран показал бы «уже применён» там, где у
+ * пользователя не хватает роли.
+ */
+export async function applyScenario(
+  supabase: Client,
+  scenarioId: string,
+): Promise<ApplyScenarioResult> {
+  /*
+    Предварительное чтение — ради честных ответов, а не ради защиты:
+    защиту держат RLS и проверки внутри функции. Невидимый сценарий
+    отличается от уже применённого, и оба ответа не требуют открывать
+    транзакцию.
+  */
+  const { data: scenario, error: readError } = await supabase
+    .from('scenarios')
+    .select('id, applied_at')
+    .eq('id', scenarioId)
+    .maybeSingle();
+  if (readError) return { kind: 'error', error: readError };
+  if (!scenario) return { kind: 'not_found' };
+  if (scenario.applied_at) return { kind: 'already_applied' };
+
+  const { data, error } = await supabase.rpc('apply_scenario', { p_scenario: scenarioId });
+
+  if (error?.code === '42501') return { kind: 'forbidden' };
+  if (error?.code === 'P0002') return { kind: 'not_found' };
+  if (error?.code === 'P0001') {
+    return { kind: 'rejected', message: error.message ?? 'Сценарий отклонён' };
+  }
+  if (error) return { kind: 'error', error };
+
+  return { kind: 'ok', scenario: data as ScenarioRow };
+}

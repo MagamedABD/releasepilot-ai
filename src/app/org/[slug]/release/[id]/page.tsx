@@ -76,13 +76,26 @@ export default async function ReleasePage({ params }: PageProps<'/org/[slug]/rel
               />
             </p>
           </div>
-          {done ? (
-            <span className="rounded-full border border-black/15 px-3 py-1 text-sm opacity-60 dark:border-white/20">
-              {RELEASE_STATUS[release.status]}
-            </span>
-          ) : (
-            <RiskBadge level={m.riskLevel} score={m.riskScore} />
-          )}
+          <div className="flex flex-col items-end gap-2">
+            {done ? (
+              <span className="rounded-full border border-black/15 px-3 py-1 text-sm opacity-60 dark:border-white/20">
+                {RELEASE_STATUS[release.status]}
+              </span>
+            ) : (
+              <RiskBadge level={m.riskLevel} score={m.riskScore} />
+            )}
+            {/*
+              Ссылка на сценарии стоит рядом с уровнем риска намеренно:
+              вопрос «что с этим делать» возникает ровно в тот момент,
+              когда человек увидел, что риск высокий.
+            */}
+            <Link
+              href={`/org/${slug}/release/${id}/scenarios`}
+              className="text-sm underline decoration-dotted underline-offset-4 opacity-70 transition hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+            >
+              Сценарии и подбор →
+            </Link>
+          </div>
         </header>
       </div>
 

@@ -1,24 +1,20 @@
 /**
  * Применение сохранённого сценария (FR-35, US-25, ADR-003).
  *
- * Вся работа — в функции `apply_scenario` (миграция 0003): перенос задач,
- * ёмкость, отметка о применении и запись в журнал одной транзакцией.
- * Маршрут только переводит её исход в код ответа.
+ * Работу делает функция `apply_scenario` (миграция 0003) одной
+ * транзакцией, разбор её исхода — слой данных, а маршрут переводит разбор
+ * в код ответа. Делится это так потому, что применяют сценарий два места:
+ * кнопка на экране сценариев и этот эндпоинт. Правила — какой отказ чем
+ * считать — обязаны быть одни, иначе экран однажды скажет «уже
+ * применён» там, где не хватает роли.
  *
- * Агент этот эндпоинт не вызывает и вызвать не может: у него нет
- * инструмента на применение (docs/07-api-and-agent.md). Изменение данных —
+ * Агент этот эндпоинт не вызывает и вызвать не может: инструмента на
+ * применение у него нет (docs/07-api-and-agent.md). Изменение данных —
  * всегда нажатие человека.
  */
 
-import {
-  fail,
-  forbidden,
-  fromPostgres,
-  isUuid,
-  notFound,
-  ok,
-  unauthorized,
-} from '@/lib/api/http';
+import { fail, forbidden, fromPostgres, isUuid, notFound, ok, unauthorized } from '@/lib/api/http';
+import { applyScenario } from '@/lib/data/scenario';
 import { createClient } from '@/lib/supabase/server';
 
 export async function POST(
@@ -32,28 +28,23 @@ export async function POST(
   const { data: auth } = await supabase.auth.getClaims();
   if (!auth?.claims) return unauthorized();
 
-  // Предварительное чтение — ради честных кодов, а не ради защиты: защиту
-  // держат RLS и проверки в функции. Невидимый сценарий — 404, уже
-  // применённый — 409, и оба ответа не требуют открывать транзакцию.
-  const { data: scenario, error: readError } = await supabase
-    .from('scenarios')
-    .select('id, applied_at')
-    .eq('id', id)
-    .maybeSingle();
-  if (readError) return fromPostgres(readError);
-  if (!scenario) return notFound();
-  if (scenario.applied_at) return fail(409, 'conflict', 'Сценарий уже применён');
+  const result = await applyScenario(supabase, id);
 
-  const { data, error } = await supabase.rpc('apply_scenario', { p_scenario: id });
-
-  if (error?.code === '42501') {
-    return forbidden('Применять сценарии может менеджер, администратор или владелец');
+  switch (result.kind) {
+    case 'not_found':
+      return notFound();
+    case 'already_applied':
+      return fail(409, 'conflict', 'Сценарий уже применён');
+    case 'forbidden':
+      return forbidden('Применять сценарии может менеджер, администратор или владелец');
+    case 'rejected':
+      // Текст писал автор миграции для человека: именно он объясняет,
+      // почему применение отклонено — например, что релиз изменился
+      // после расчёта сценария.
+      return fail(422, 'rejected', result.message);
+    case 'error':
+      return fromPostgres(result.error);
+    case 'ok':
+      return ok(result.scenario);
   }
-  if (error?.code === 'P0002') return notFound();
-  // P0001 — отказ по существу с текстом для человека: релиз изменился
-  // после расчёта, блокер держит остающиеся задачи и т. п. `fromPostgres`
-  // отдаёт его как 422 с сообщением функции.
-  if (error) return fromPostgres(error);
-
-  return ok(data);
 }
