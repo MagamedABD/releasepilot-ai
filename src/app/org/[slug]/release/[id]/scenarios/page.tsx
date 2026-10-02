@@ -21,7 +21,7 @@ import {
   signed,
 } from '@/lib/ui/scenario';
 
-import { ApplyButton, DeltaTable, WhatIfForm, type TaskOption } from './form';
+import { ApplyButton, DeltaTable, WhatIfForm, type TaskOption } from '@/components/scenario';
 
 export const metadata = { title: 'Сценарии — ReleasePilot AI' };
 

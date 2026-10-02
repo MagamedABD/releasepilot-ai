@@ -95,6 +95,12 @@ export default async function ReleasePage({ params }: PageProps<'/org/[slug]/rel
             >
               Сценарии и подбор →
             </Link>
+            <Link
+              href={`/org/${slug}/release/${id}/assistant`}
+              className="text-sm underline decoration-dotted underline-offset-4 opacity-70 transition hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+            >
+              Спросить ассистента →
+            </Link>
           </div>
         </header>
       </div>

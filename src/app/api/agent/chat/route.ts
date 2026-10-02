@@ -224,6 +224,26 @@ export async function POST(request: Request) {
             send({ type: 'tool', name: block.name, ok: outcome.ok });
 
             if (outcome.ok) toolResults.push(outcome.result);
+
+            /*
+              Предложение сценария — отдельное событие, а не строчка
+              текста (docs/05-ui-concept.md, экран 5). Пересказ числами в
+              тексте пользователь читает как мнение модели; карточка с
+              «до» и «после» и кнопкой «Применить» — это посчитанный
+              движком эффект и действие, которое совершает человек.
+            */
+            if (outcome.ok && block.name === 'propose_scenario') {
+              const proposal = outcome.result as {
+                scenario_id?: string;
+                delta?: unknown;
+              };
+              send({
+                type: 'proposal',
+                scenarioId: proposal.scenario_id,
+                title: (block.input as { title?: string })?.title ?? 'Предложение',
+                delta: proposal.delta,
+              });
+            }
             results.push({
               type: 'tool_result',
               tool_use_id: block.id,
