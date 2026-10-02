@@ -13,8 +13,6 @@
  * показывала бы эффект, которого никто не считал.
  */
 
-import { RISK_CONFIG } from '@/domain/config';
-import { simulate } from '@/domain/scenario';
 import {
   BAD_JSON,
   badJson,
@@ -29,8 +27,9 @@ import {
   readJson,
   unauthorized,
 } from '@/lib/api/http';
-import { problemFields, toApiSimulation, toScenarioResult } from '@/lib/api/scenario';
+import { problemFields, toApiSimulation } from '@/lib/api/scenario';
 import { loadReleaseContext } from '@/lib/data/context';
+import { saveScenario } from '@/lib/data/scenario';
 import { createClient } from '@/lib/supabase/server';
 import { scenarioCreateSchema } from '@/lib/validation/release';
 
@@ -85,69 +84,42 @@ export async function POST(
   const result = await loadReleaseContext(supabase, id);
   if (result.kind === 'error') return fromPostgres(result.error);
   if (result.kind === 'not_found') return notFound();
-  const { snapshot, orgId, completedReleases } = result.context;
 
-  if (input.moveToReleaseId) {
-    if (input.moveToReleaseId === id) {
+  /*
+    Сохранение — в слое данных, потому что сценарии сохраняет не только
+    человек: агент делает то же самое инструментом `propose_scenario`.
+    Порядок действий у них обязан быть один, и самое важное в нём —
+    что эффект считается на сервере из снимка. Будь это написано
+    дважды, агенту достаточно было бы прислать `result` самому, и кнопка
+    «Применить» показывала бы эффект, которого никто не считал.
+  */
+  const saved = await saveScenario(supabase, id, result.context, auth.claims.sub as string, {
+    title: input.title,
+    excludeTaskIds: input.excludeTaskIds,
+    extraCapacity: input.extraCapacity,
+    moveToReleaseId: input.moveToReleaseId,
+  });
+
+  switch (saved.kind) {
+    case 'bad_target':
       return fail(422, 'scenario_rejected', 'Сценарий нельзя посчитать честно', {
-        moveToReleaseId: ['Задачи переносятся в тот же релиз, из которого уходят'],
+        moveToReleaseId: [saved.message],
       });
-    }
-    // Та же организация и открытый статус — иначе применение упадёт позже,
-    // когда пользователь уже поверит в сохранённый эффект.
-    const { data: target, error } = await supabase
-      .from('releases')
-      .select('id')
-      .eq('id', input.moveToReleaseId)
-      .eq('org_id', orgId)
-      .in('status', ['planned', 'active'])
-      .maybeSingle();
-    if (error) return fromPostgres(error);
-    if (!target) {
-      return fail(422, 'scenario_rejected', 'Сценарий нельзя посчитать честно', {
-        moveToReleaseId: ['Релиз назначения не найден или уже закрыт'],
+    case 'rejected':
+      return fail(
+        422,
+        'scenario_rejected',
+        'Сценарий нельзя посчитать честно',
+        problemFields(saved.problems),
+      );
+    case 'forbidden':
+      return forbidden('Сохранять сценарии может менеджер, администратор или владелец');
+    case 'error':
+      return fromPostgres(saved.error);
+    case 'ok':
+      return created({
+        scenario: saved.scenario,
+        simulation: toApiSimulation(saved),
       });
-    }
   }
-
-  const simulation = simulate(
-    snapshot,
-    { excludeTaskIds: input.excludeTaskIds, extraCapacity: input.extraCapacity },
-    RISK_CONFIG,
-    { completedReleases },
-  );
-  if (simulation.kind === 'rejected') {
-    return fail(
-      422,
-      'scenario_rejected',
-      'Сценарий нельзя посчитать честно',
-      problemFields(simulation.problems),
-    );
-  }
-
-  const { data: scenario, error } = await supabase
-    .from('scenarios')
-    .insert({
-      org_id: orgId,
-      release_id: id,
-      created_by: auth.claims.sub,
-      title: input.title,
-      payload: {
-        excludeTaskIds: input.excludeTaskIds,
-        extraCapacity: input.extraCapacity,
-        moveToReleaseId: input.moveToReleaseId,
-      },
-      result: toScenarioResult(simulation),
-    })
-    .select('*')
-    .single();
-
-  // Релиз пользователь видит — значит, отказ политики здесь означает
-  // нехватку роли, а не чужие данные, и скрывать его за 404 незачем.
-  if (error?.code === '42501') {
-    return forbidden('Сохранять сценарии может менеджер, администратор или владелец');
-  }
-  if (error) return fromPostgres(error);
-
-  return created({ scenario, simulation: toApiSimulation(simulation) });
 }
