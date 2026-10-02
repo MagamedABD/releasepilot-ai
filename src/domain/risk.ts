@@ -24,7 +24,8 @@ export function clamp(value: number, min = 0, max = 1): number {
   return Math.min(max, Math.max(min, value));
 }
 
-const LEVEL_RANK: Record<RiskLevel, number> = {
+/** Порядок уровней. Экспортируется: по нему сравнивает цели подбор сценария. */
+export const LEVEL_RANK: Record<RiskLevel, number> = {
   low: 0,
   medium: 1,
   high: 2,
