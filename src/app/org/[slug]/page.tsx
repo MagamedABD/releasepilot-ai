@@ -70,14 +70,22 @@ export default async function ReleasesPage({ params }: PageProps<'/org/[slug]'>)
             Релизы{releases.length ? ` · ${releases.length}` : ''}
           </p>
         </div>
-        <form action={logout}>
-          <button
-            type="submit"
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/org/${slug}/analytics`}
             className="rounded-lg border border-black/15 px-3 py-1.5 text-sm transition hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
           >
-            Выйти
-          </button>
-        </form>
+            Аналитика
+          </Link>
+          <form action={logout}>
+            <button
+              type="submit"
+              className="rounded-lg border border-black/15 px-3 py-1.5 text-sm transition hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
+            >
+              Выйти
+            </button>
+          </form>
+        </div>
       </header>
 
       {releases.length === 0 ? (
