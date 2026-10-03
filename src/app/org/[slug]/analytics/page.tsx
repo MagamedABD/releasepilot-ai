@@ -93,7 +93,7 @@ export default async function AnalyticsPage({ params }: PageProps<'/org/[slug]/a
             </div>
             <div>
               <p className="text-3xl font-semibold tabular-nums">
-                {history.avgDeviationDays === null ? '—' : signed(history.avgDeviationDays)}
+                {history.avgDeviationDays === null ? '—' : `${signed(history.avgDeviationDays)} д`}
               </p>
               <p className="mt-1 text-sm opacity-60">среднее отклонение со знаком</p>
             </div>

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { ESCALATION_ADVICE, direction, levelChange, lowerLevel, pct, signed } from './scenario';
+import {
+  ESCALATION_ADVICE,
+  LEVEL_GENITIVE,
+  direction,
+  levelChange,
+  lowerLevel,
+  pct,
+  signed,
+} from './scenario';
 
 describe('число со знаком', () => {
   it('плюс обязателен: «риск 12.4» и «риск +12.4» читаются по-разному', () => {
@@ -80,5 +88,19 @@ describe('советы по правилам эскалации', () => {
     // Ради этого случая у подбора и появился ответ «недостижимо»: код
     // CRITICAL_BLOCKER сам по себе ничего не советует.
     expect(ESCALATION_ADVICE.CRITICAL_BLOCKER).toContain('разблокировать');
+  });
+});
+
+describe('уровень в родительном падеже', () => {
+  /*
+    «Уровень до высокий не опустить» — так экран сценариев писал на
+    продакшне. Строка собиралась из двух правильных частей, и ни одна из
+    них по отдельности не была неверной.
+  */
+  it('подставляется после «до» и «ниже» без ошибки падежа', () => {
+    expect(`до ${LEVEL_GENITIVE.high}`).toBe('до высокого');
+    expect(LEVEL_GENITIVE.medium).toBe('среднего');
+    // «среднего» — мягкая основа, поэтому окончание и «-ого», и «-его».
+    expect(Object.values(LEVEL_GENITIVE).every((v) => /(ого|его)$/.test(v))).toBe(true);
   });
 });

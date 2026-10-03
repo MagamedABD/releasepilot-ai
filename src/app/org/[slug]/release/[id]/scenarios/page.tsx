@@ -11,10 +11,11 @@ import { suggestScenario } from '@/domain/suggest';
 import type { RiskLevel } from '@/domain/types';
 import { loadReleaseContext } from '@/lib/data/context';
 import { createClient } from '@/lib/supabase/server';
-import { RISK_LEVEL, hours, plural } from '@/lib/ui/risk';
+import { hours, plural } from '@/lib/ui/risk';
 import {
   DIRECTION_TONE,
   ESCALATION_ADVICE,
+  LEVEL_GENITIVE,
   direction,
   lowerLevel,
   pct,
@@ -140,7 +141,7 @@ export default async function ScenariosPage({
                 </p>
               ) : suggestion.kind === 'already_met' ? (
                 <p className="text-sm opacity-60">
-                  Уровень уже ниже {RISK_LEVEL[goalLevel as RiskLevel].label.toLowerCase()} —
+                  Уровень уже не выше {LEVEL_GENITIVE[goalLevel as RiskLevel]} —
                   переносить нечего.
                 </p>
               ) : suggestion.kind === 'ok' ? (
@@ -148,7 +149,7 @@ export default async function ScenariosPage({
                   <p className="text-sm">
                     Чтобы уровень опустился до{' '}
                     <span className="font-medium">
-                      {RISK_LEVEL[goalLevel as RiskLevel].label}
+                      {LEVEL_GENITIVE[goalLevel as RiskLevel]}
                     </span>
                     , достаточно убрать{' '}
                     {plural(suggestion.taskIds.length, 'задачу', 'задачи', 'задач')}:
@@ -202,7 +203,7 @@ export default async function ScenariosPage({
                 <div className="flex flex-col gap-2 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
                   <p className="font-medium">
                     Переносом задач уровень до{' '}
-                    {RISK_LEVEL[goalLevel as RiskLevel].label.toLowerCase()} не опустить
+                    {LEVEL_GENITIVE[goalLevel as RiskLevel]} не опустить
                   </p>
                   <p className="opacity-80">
                     {suggestion.pinnedBy.length > 0
