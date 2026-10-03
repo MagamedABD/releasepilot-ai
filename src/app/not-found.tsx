@@ -27,7 +27,7 @@ export default function NotFound() {
       <div className="mt-8">
         <Link
           href="/"
-          className="rounded-lg border border-black/15 px-4 py-2 text-sm font-medium transition hover:bg-black/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:border-white/20 dark:hover:bg-white/10"
+          className="rounded-lg border border-black/15 px-4 py-2 text-sm font-medium transition hover:bg-black/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:border-white/20 dark:hover:bg-white/10"
         >
           На главную
         </Link>

@@ -59,7 +59,7 @@ export function Readiness({
         aria-valuemax={100}
         aria-label="Готовность по трудозатратам"
       >
-        <div className="h-full rounded-full bg-blue-600" style={{ width: `${Math.min(pct, 100)}%` }} />
+        <div className="h-full rounded-full bg-brand" style={{ width: `${Math.min(pct, 100)}%` }} />
       </div>
       {byCountPct === undefined ? null : (
         <p className="mt-1.5 text-xs opacity-50">{byCountPct}% по числу задач</p>
@@ -113,7 +113,7 @@ export function TeamLoadBars({ loads }: { loads: TeamLoad[] }) {
             </div>
             <div className="relative mt-1.5 h-2 w-full overflow-hidden rounded-full bg-black/10 dark:bg-white/10">
               <div
-                className={`h-full rounded-full ${over ? 'bg-orange-500' : 'bg-blue-600'}`}
+                className={`h-full rounded-full ${over ? 'bg-orange-500' : 'bg-brand'}`}
                 style={{ width: `${width}%` }}
               />
               <span

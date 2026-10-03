@@ -57,7 +57,7 @@ export default async function ReleasePage({ params }: PageProps<'/org/[slug]/rel
       <div>
         <Link
           href={`/org/${slug}`}
-          className="text-sm opacity-60 transition hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          className="text-sm opacity-60 transition hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         >
           ← Все релизы
         </Link>
@@ -91,13 +91,13 @@ export default async function ReleasePage({ params }: PageProps<'/org/[slug]/rel
             */}
             <Link
               href={`/org/${slug}/release/${id}/scenarios`}
-              className="text-sm underline decoration-dotted underline-offset-4 opacity-70 transition hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+              className="text-sm underline decoration-dotted underline-offset-4 opacity-70 transition hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
             >
               Сценарии и подбор →
             </Link>
             <Link
               href={`/org/${slug}/release/${id}/assistant`}
-              className="text-sm underline decoration-dotted underline-offset-4 opacity-70 transition hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+              className="text-sm underline decoration-dotted underline-offset-4 opacity-70 transition hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
             >
               Спросить ассистента →
             </Link>

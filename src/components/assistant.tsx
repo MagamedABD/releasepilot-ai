@@ -233,7 +233,7 @@ export function Assistant({
           type="submit"
           disabled={busy || draft.trim() === ''}
           aria-busy={busy}
-          className="rounded-lg bg-blue-600 px-4 py-2.5 font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          className="rounded-lg bg-brand px-4 py-2.5 font-medium text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy ? 'Думает…' : 'Спросить'}
         </button>
@@ -254,7 +254,7 @@ function EntryView({
   switch (entry.kind) {
     case 'question':
       return (
-        <p className="ml-auto max-w-prose rounded-2xl bg-blue-600 px-4 py-2.5 text-white">
+        <p className="ml-auto max-w-prose rounded-2xl bg-brand px-4 py-2.5 text-white">
           {entry.text}
         </p>
       );

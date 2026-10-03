@@ -138,7 +138,7 @@ export function WhatIfForm({
           type="submit"
           name="intent"
           value="simulate"
-          className="rounded-lg bg-blue-600 px-4 py-2.5 font-medium text-white transition hover:bg-blue-700"
+          className="rounded-lg bg-brand px-4 py-2.5 font-medium text-white transition hover:bg-brand-hover"
         >
           Посчитать
         </button>

@@ -47,7 +47,7 @@ export function Field({
     'focus-within:ring-2 focus-within:ring-offset-1',
     hasError
       ? 'border-red-500 focus-within:ring-red-500'
-      : 'border-black/15 focus-within:ring-blue-500 dark:border-white/20',
+      : 'border-black/15 focus-within:ring-brand dark:border-white/20',
   ].join(' ');
 
   return (
@@ -108,7 +108,7 @@ export function SubmitButton({ children, pendingLabel }: { children: string; pen
       type="submit"
       disabled={pending}
       aria-busy={pending}
-      className="mt-2 rounded-lg bg-blue-600 px-4 py-2.5 font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+      className="mt-2 rounded-lg bg-brand px-4 py-2.5 font-medium text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
     >
       {pending ? pendingLabel : children}
     </button>

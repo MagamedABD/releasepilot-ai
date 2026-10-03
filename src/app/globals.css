@@ -1,26 +1,47 @@
 @import "tailwindcss";
 
+/*
+  Тёмная тема — всегда, а не по настройке системы.
+
+  Интерфейс выдержан в тёмной гамме с красным акцентом. Все компоненты и
+  так описаны парами «светлый класс / dark:-класс», поэтому вариант `dark`
+  переопределён на класс `.dark` у <html>: так включается вся тёмная
+  половина разом, без правки двадцати файлов, и светлая остаётся рабочей,
+  если тему когда-нибудь вернут переключаемой.
+*/
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Фон и текст: почти чёрный, а не чёрный, и почти белый, а не белый —
+     чистые #000 и #fff на экране режут глаз и сливают оттенки серого. */
+  --background: #141414;
+  --foreground: #e5e5e5;
+  /* Нативные элементы — выпадающие списки, флажки, полосы прокрутки —
+     иначе останутся светлыми посреди тёмной страницы. */
+  color-scheme: dark;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  /*
+    Акцент — красный, и только для действий и навигации: основные кнопки,
+    активный пункт меню, фокус. Цвет риска он не заменяет: «критический»
+    остаётся полупрозрачной плашкой с точкой и словом, а кнопка — сплошной
+    заливкой. Иначе на экране, где главное — отличить опасное от
+    обычного, кнопка «Применить» выглядела бы как предупреждение.
+  */
+  --color-brand: #e50914;
+  --color-brand-hover: #f6121d;
+  --color-surface: #1f1f1f;
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* Geist уже загружается в layout.tsx и включает кириллицу; Arial здесь
+     стоял по умолчанию из шаблона и делал загрузку шрифта напрасной. */
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }

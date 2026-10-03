@@ -27,7 +27,7 @@ export default async function LoginPage({ searchParams }: PageProps<'/login'>) {
 
       <p className="mt-6 text-center text-sm opacity-70">
         Нет аккаунта?{' '}
-        <Link href="/register" className="font-medium text-blue-600 hover:underline dark:text-blue-400">
+        <Link href="/register" className="font-medium text-white underline-offset-4 hover:underline">
           Зарегистрироваться
         </Link>
       </p>

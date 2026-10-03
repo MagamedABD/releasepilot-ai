@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import { logout } from '@/app/(auth)/actions';
 import { PlannedDate, Readiness, RiskBadge, Stat } from '@/components/cockpit';
 import { EmptyState } from '@/components/states';
 import { loadOrgReleases, type ReleaseWithMetrics } from '@/lib/data/snapshot';
@@ -70,22 +69,6 @@ export default async function ReleasesPage({ params }: PageProps<'/org/[slug]'>)
             Релизы{releases.length ? ` · ${releases.length}` : ''}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Link
-            href={`/org/${slug}/analytics`}
-            className="rounded-lg border border-black/15 px-3 py-1.5 text-sm transition hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
-          >
-            Аналитика
-          </Link>
-          <form action={logout}>
-            <button
-              type="submit"
-              className="rounded-lg border border-black/15 px-3 py-1.5 text-sm transition hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
-            >
-              Выйти
-            </button>
-          </form>
-        </div>
       </header>
 
       {releases.length === 0 ? (
@@ -124,7 +107,7 @@ function ReleaseCard({ slug, release }: { slug: string; release: ReleaseWithMetr
   return (
     <Link
       href={`/org/${slug}/release/${release.id}`}
-      className="block rounded-2xl border border-black/10 p-5 transition hover:border-black/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:border-white/15 dark:hover:border-white/30"
+      className="block rounded-2xl border border-black/10 p-5 transition hover:border-black/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand dark:border-white/15 dark:hover:border-white/30"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">

@@ -108,7 +108,7 @@ export default async function ScenariosPage({
       <div>
         <Link
           href={`/org/${slug}/release/${id}`}
-          className="text-sm opacity-60 transition hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          className="text-sm opacity-60 transition hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         >
           ← Кокпит релиза
         </Link>
