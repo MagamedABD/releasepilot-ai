@@ -35,6 +35,15 @@ const schema = z.object({
   ANTHROPIC_MODEL_MAIN: z.string().default('claude-opus-4-7'),
   ANTHROPIC_MODEL_LIGHT: z.string().default('claude-haiku-4-5'),
   AGENT_DAILY_LIMIT: z.coerce.number().int().positive().default(50),
+  /**
+   * Пароль планировщика для ежедневной записи снимков метрик (FR-39).
+   *
+   * Необязателен намеренно: локальная разработка без него обходится, а
+   * маршрут при незаданном пароле отвечает «не настроено» и ничего не
+   * делает. Открывать его без пароля нельзя — снимки пишутся
+   * административным клиентом, в обход политик.
+   */
+  CRON_SECRET: z.string().min(16, 'пароль планировщика короче 16 символов').optional(),
 });
 
 const parsed = schema.safeParse({
@@ -45,6 +54,7 @@ const parsed = schema.safeParse({
   ANTHROPIC_MODEL_MAIN: process.env.ANTHROPIC_MODEL_MAIN,
   ANTHROPIC_MODEL_LIGHT: process.env.ANTHROPIC_MODEL_LIGHT,
   AGENT_DAILY_LIMIT: process.env.AGENT_DAILY_LIMIT,
+  CRON_SECRET: process.env.CRON_SECRET,
 });
 
 if (!parsed.success) {

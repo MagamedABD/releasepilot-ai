@@ -191,11 +191,25 @@ export async function loadReleaseSnapshot(
 export type ReleaseWithMetrics = {
   id: string;
   name: string;
+  orgId: string;
   status: Database['public']['Enums']['release_status'];
   plannedDate: string;
   releasedAt: string | null;
   projectKey: string;
   metrics: ReleaseMetrics;
+  /**
+   * Снимок, по которому посчитаны метрики.
+   *
+   * Отдаётся наружу ради одного вызывающего — записи ежедневных снимков
+   * метрик (FR-39). Ей нужен прогноз, а прогноз считается по снимку, и
+   * без него пришлось бы или собирать те же пять запросов второй раз, или
+   * записывать уровень риска, посчитанный без вероятности, — то есть
+   * отличающийся от того, что видно в кокпите.
+   *
+   * Экран списка релизов это поле не читает: Монте-Карло на каждый релиз
+   * при открытии списка никому не нужен.
+   */
+  snapshot: ReleaseSnapshot;
 };
 
 /**
@@ -279,11 +293,13 @@ export async function loadOrgReleases(
     return {
       id: r.id,
       name: r.name,
+      orgId,
       status: r.status,
       plannedDate: r.planned_date,
       releasedAt: r.released_at,
       projectKey: (r.projects as { key: string } | null)?.key ?? '—',
       metrics: calculateRelease(snapshot),
+      snapshot,
     };
   });
 }

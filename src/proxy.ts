@@ -20,6 +20,22 @@ import { NextResponse, type NextRequest } from 'next/server';
 /** Страницы, доступные без входа. */
 const PUBLIC_PATHS = ['/login', '/register', '/auth', '/demo'];
 
+/**
+ * Пути, которые проверяют вызывающего сами.
+ *
+ * Не «публичные»: запись снимков метрик закрыта паролем планировщика
+ * (`CRON_SECRET`), и без него маршрут не работает вовсе. Но сессии у него
+ * нет и быть не может — планировщик Vercel приходит без cookie, и по
+ * общему правилу proxy отвечал бы ему 401 раньше самого маршрута.
+ *
+ * Поймано живой проверкой, а не чтением: маршрут отвечал «нужно войти в
+ * систему» на запрос без заголовка. В продакшне это выглядело бы так:
+ * задача исправно запускается каждый день, каждый раз получает 401, и
+ * узнать об этом можно было бы только из журнала планировщика — то есть
+ * через месяц, когда обнаружилось бы, что истории за месяц нет.
+ */
+const SELF_GUARDED_PATHS = ['/api/cron'];
+
 export default async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
@@ -53,8 +69,11 @@ export default async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'));
+  const isSelfGuarded = SELF_GUARDED_PATHS.some(
+    (p) => pathname === p || pathname.startsWith(p + '/'),
+  );
 
-  if (!user && !isPublic) {
+  if (!user && !isPublic && !isSelfGuarded) {
     /*
       API отвечает отказом, а не перенаправлением.
 
