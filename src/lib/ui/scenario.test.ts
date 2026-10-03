@@ -7,6 +7,7 @@ import {
   levelChange,
   lowerLevel,
   pct,
+  ruDate,
   signed,
 } from './scenario';
 
@@ -102,5 +103,13 @@ describe('уровень в родительном падеже', () => {
     expect(LEVEL_GENITIVE.medium).toBe('среднего');
     // «среднего» — мягкая основа, поэтому окончание и «-ого», и «-его».
     expect(Object.values(LEVEL_GENITIVE).every((v) => /(ого|его)$/.test(v))).toBe(true);
+  });
+});
+
+describe('дата словами', () => {
+  it('как в кокпите: «6 октября», а не 2026-10-06', () => {
+    expect(ruDate('2026-10-06')).toBe('6 октября');
+    // Момент с часовым поясом не сдвигает день: берётся календарная дата.
+    expect(ruDate('2026-10-06T23:30:00.000Z')).toBe('6 октября');
   });
 });

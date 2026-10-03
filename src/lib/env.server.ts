@@ -36,6 +36,16 @@ const schema = z.object({
   ANTHROPIC_MODEL_LIGHT: z.string().default('claude-haiku-4-5'),
   AGENT_DAILY_LIMIT: z.coerce.number().int().positive().default(50),
   /**
+   * Режим ассистента.
+   *
+   * `auto` (по умолчанию) — живая модель, если задан ключ, иначе демо-режим:
+   * настоящие инструменты и ответ по шаблону из их чисел (src/lib/agent/demo.ts).
+   * `live` — только модель; без ключа ассистент отвечает «недоступен».
+   * `demo` — только шаблон, даже при наличии ключа: для защиты без сети.
+   * `off` — ассистент выключен, остальное приложение работает (NFR-07).
+   */
+  AGENT_MODE: z.enum(['auto', 'live', 'demo', 'off']).default('auto'),
+  /**
    * Пароль планировщика для ежедневной записи снимков метрик (FR-39).
    *
    * Необязателен намеренно: локальная разработка без него обходится, а
@@ -62,6 +72,7 @@ const parsed = schema.safeParse({
   ANTHROPIC_MODEL_MAIN: process.env.ANTHROPIC_MODEL_MAIN,
   ANTHROPIC_MODEL_LIGHT: process.env.ANTHROPIC_MODEL_LIGHT,
   AGENT_DAILY_LIMIT: process.env.AGENT_DAILY_LIMIT,
+  AGENT_MODE: process.env.AGENT_MODE,
   CRON_SECRET: process.env.CRON_SECRET,
   TRACKER_OAUTH_TOKEN: process.env.TRACKER_OAUTH_TOKEN,
   TRACKER_ORG_ID: process.env.TRACKER_ORG_ID,

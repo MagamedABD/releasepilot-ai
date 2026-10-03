@@ -49,10 +49,13 @@ export function Assistant({
   slug,
   orgId,
   releaseId,
+  mode,
 }: {
   slug: string;
   orgId: string;
   releaseId: string;
+  /** Режим известен заранее: пометка «демо» должна стоять до ответа, а не после. */
+  mode: 'live' | 'demo' | 'off';
 }) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [draft, setDraft] = useState('');
@@ -164,6 +167,19 @@ export function Assistant({
 
   return (
     <div className="flex flex-col gap-5">
+      {mode === 'demo' ? (
+        /*
+          Пометка стоит над диалогом всё время, а не только в первом
+          ответе. На защите спросят «это настоящий ИИ?» — ответ должен быть
+          на экране, а не в памяти докладчика.
+        */
+        <p className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm">
+          <span className="font-medium">Демо-режим.</span> Инструменты и все числа настоящие — из того
+          же расчёта, что в кокпите. Модель не вызывается: вопрос разбирается по словам, ответ
+          собирается по шаблону.
+        </p>
+      ) : null}
+
       <ol className="flex flex-col gap-4">
         {entries.map((entry, i) => (
           <li key={i}>

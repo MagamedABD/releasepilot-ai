@@ -62,6 +62,7 @@ const created = {
   releases: [] as string[],
   capacity: [] as Window[],
   runs: [] as string[],
+  sessions: [] as string[],
 };
 
 async function main() {
@@ -400,7 +401,60 @@ async function main() {
   // Задача без релиза уборкой не унесётся — удаляем по ключу отдельно.
   await admin(`tasks?external_key=eq.IMP-${stamp}-3`, { method: 'DELETE' });
 
-  console.log('\n9. Чего быть не должно');
+  console.log('\n9. Ассистент в демо-режиме');
+  /*
+    Ключа Claude API нет, и в режиме auto отвечает демо-режим: настоящие
+    инструменты, ответ по шаблону из их чисел. Проверяется не шаблон — его
+    держат юнит-тесты, — а весь путь: поток событий, вызовы инструментов,
+    совпадение чисел ответа с метриками релиза и сверка FR-25 на сервере.
+  */
+  const orgId = demo.org_id;
+  const metricsRes = await get(`/api/releases/${source.id}/metrics`, cookie);
+  const sourceScore = (metricsRes.body as { riskScore?: number })?.riskScore;
+
+  const chat = await post('/api/agent/chat', cookie, {
+    orgId,
+    releaseId: source.id,
+    message: 'Что сейчас угрожает релизу?',
+  });
+  const raw = typeof chat.body === 'string' ? chat.body : '';
+  const events = raw
+    .split('\n\n')
+    .map((b) => b.split('\n').find((l) => l.startsWith('data: ')))
+    .filter((l): l is string => Boolean(l))
+    .map((l) => JSON.parse(l.slice(6)) as Record<string, unknown>);
+
+  const sessionEvent = events.find((e) => e.type === 'session');
+  if (sessionEvent?.sessionId) created.sessions.push(String(sessionEvent.sessionId));
+  const tools = events.filter((e) => e.type === 'tool');
+  const text = events
+    .filter((e) => e.type === 'text')
+    .map((e) => String(e.text))
+    .join('');
+  const done = events.find((e) => e.type === 'done') as
+    | { mode?: string; unsupportedNumbers?: string[] }
+    | undefined;
+
+  check(chat.status === 200 && events[0]?.type === 'session', 'поток открылся с события session', `HTTP ${chat.status}`);
+  check(
+    tools.length >= 1 && tools.every((t) => t.ok === true),
+    `вызваны инструменты: ${tools.map((t) => t.name).join(', ')}`,
+  );
+  check(done?.mode === 'demo', 'ответ помечен как демо-режим', `режим ${done?.mode}`);
+  // Число из ответа должно быть числом из кокпита: в этом весь смысл
+  // демо-режима — модели нет, расчёт настоящий.
+  check(
+    typeof sourceScore === 'number' && text.includes(`скор ${sourceScore}`),
+    `в ответе тот же скор, что в метриках: ${sourceScore}`,
+  );
+  check(
+    Array.isArray(done?.unsupportedNumbers) && done.unsupportedNumbers.length === 0,
+    'сверка чисел FR-25: выдуманных чисел нет',
+    done?.unsupportedNumbers?.join(', '),
+  );
+  console.log(`     «${text.split('\n')[0]}»`);
+
+  console.log('\n10. Чего быть не должно');
   const anon = await post(`/api/scenarios/${scenarioId}/apply`, '');
   check(anon.status === 401, 'без cookie — 401', `HTTP ${anon.status}`);
   const absent = await post('/api/scenarios/00000000-0000-4000-8000-000000000000/apply', cookie);
@@ -411,6 +465,10 @@ async function main() {
 async function cleanup() {
   for (const { team, from, to } of created.capacity) {
     await admin(`team_capacity?team_id=eq.${team}&period_start=eq.${from}&period_end=eq.${to}`, { method: 'DELETE' });
+  }
+  if (created.sessions.length) {
+    // Диалоги проверки: сообщения уходят каскадом вместе с диалогом.
+    await admin(`agent_sessions?id=in.(${created.sessions.join(',')})`, { method: 'DELETE' });
   }
   if (created.runs.length) {
     // Запуски импорта, в отличие от журнала изменений, политикой на

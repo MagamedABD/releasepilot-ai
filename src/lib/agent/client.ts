@@ -40,3 +40,28 @@ export const CALL_PARAMS = {
   thinking: { type: 'adaptive' as const },
   output_config: { effort: 'high' as const },
 };
+
+export type AgentMode = 'live' | 'demo' | 'off';
+
+/**
+ * Каким будет ассистент в этом запуске.
+ *
+ * Решение одно на весь инстанс и зависит только от настроек, а не от
+ * вопроса: экран должен заранее знать, показывать ли пометку «демо-режим».
+ * Пометка, появляющаяся после ответа, — это уже не честность, а оправдание.
+ */
+export function agentMode(): AgentMode {
+  switch (serverEnv.AGENT_MODE) {
+    case 'off':
+      return 'off';
+    case 'demo':
+      return 'demo';
+    case 'live':
+      // Живую модель просили явно, а ключа нет — значит, ассистент
+      // недоступен. Подменять её шаблоном молча нельзя: человек, который
+      // включил живой режим, должен видеть, что он не работает.
+      return serverEnv.ANTHROPIC_API_KEY ? 'live' : 'off';
+    case 'auto':
+      return serverEnv.ANTHROPIC_API_KEY ? 'live' : 'demo';
+  }
+}

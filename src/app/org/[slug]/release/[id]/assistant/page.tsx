@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { Assistant } from '@/components/assistant';
+import { agentMode } from '@/lib/agent/client';
 import { RiskBadge } from '@/components/cockpit';
 import { RISK_CONFIG } from '@/domain/config';
 import { forecastRelease } from '@/domain/forecast';
@@ -72,7 +73,7 @@ export default async function AssistantPage({
         </header>
       </div>
 
-      <Assistant slug={slug} orgId={release.org_id} releaseId={id} />
+      <Assistant slug={slug} orgId={release.org_id} releaseId={id} mode={agentMode()} />
     </div>
   );
 }

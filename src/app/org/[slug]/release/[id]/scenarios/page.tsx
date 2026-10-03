@@ -16,6 +16,8 @@ import {
   DIRECTION_TONE,
   ESCALATION_ADVICE,
   LEVEL_GENITIVE,
+  PINNED_HEADER,
+  SUGGEST_LIMITS,
   direction,
   lowerLevel,
   pct,
@@ -202,12 +204,12 @@ export default async function ScenariosPage({
                 */
                 <div className="flex flex-col gap-2 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
                   <p className="font-medium">
-                    Переносом задач уровень до{' '}
+                    Переносом задач ({SUGGEST_LIMITS}) уровень до{' '}
                     {LEVEL_GENITIVE[goalLevel as RiskLevel]} не опустить
                   </p>
                   <p className="opacity-80">
                     {suggestion.pinnedBy.length > 0
-                      ? 'Уровень держат правила, на состав релиза не реагирующие:'
+                      ? PINNED_HEADER
                       : 'Ни один перенос не снижает скор достаточно.'}
                   </p>
                   {suggestion.pinnedBy.length > 0 ? (

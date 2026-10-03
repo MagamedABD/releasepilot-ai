@@ -482,12 +482,12 @@ async function main() {
   const anonSim = await post(`/api/releases/${target.id}/simulate`, '', { excludeTaskIds: [] });
   check(anonSim.status === 401, 'симуляция без cookie — 401', `HTTP ${anonSim.status}`);
 
-  console.log('\n12. Ассистент: отказ не ломает приложение (NFR-07)');
+  console.log('\n12. Ассистент: проверки без записи');
   /*
-    Ключа Claude API в окружении нет, и это не пропуск проверки, а сама
-    проверка: публичное демо должно работать без агента. Отказ обязан
-    выглядеть как «ассистент недоступен», а не как пятисотая, и всё
-    остальное обязано продолжать работать.
+    Здесь — только то, что отклоняется до создания диалога и ничего не
+    пишет: проверка намеренно остаётся читающей. Сам диалог, в том числе
+    демо-режим без ключа, проверяет smoke:scenario — он пишет и убирает
+    за собой.
   */
   const noAuthChat = await post('/api/agent/chat', '', { orgId, message: 'Что с релизом?' });
   check(noAuthChat.status === 401, 'диалог без cookie — 401', `HTTP ${noAuthChat.status}`);
@@ -495,26 +495,8 @@ async function main() {
   const emptyQuestion = await post('/api/agent/chat', cookie, { orgId, message: '   ' });
   check(emptyQuestion.status === 422, 'пустой вопрос — 422', `HTTP ${emptyQuestion.status}`);
 
-  const chat = await post('/api/agent/chat', cookie, {
-    orgId,
-    releaseId: target.id,
-    message: 'Что сейчас угрожает релизу?',
-  });
-  const chatError = (chat.body as { error?: { code: string; message: string } })?.error;
-  check(
-    chat.status === 503 && chatError?.code === 'ai_unavailable',
-    'без ключа — ai_unavailable, а не пятисотая',
-    `HTTP ${chat.status} ${chatError?.code ?? ''}`,
-  );
-  check(
-    Boolean(chatError?.message?.includes('работают')),
-    'ответ сообщает, что остальное приложение работает',
-    chatError?.message,
-  );
-
-  // Буквальная проверка NFR-07: после отказа ассистента кокпит жив.
-  const stillAlive = await get(`/api/releases/${target.id}/metrics`, cookie);
-  check(stillAlive.status === 200, 'метрики после отказа ассистента — 200', `HTTP ${stillAlive.status}`);
+  const noOrgChat = await post('/api/agent/chat', cookie, { message: 'Что с релизом?' });
+  check(noOrgChat.status === 422, 'без организации — 422', `HTTP ${noOrgChat.status}`);
 
   console.log('\n13. Импорт из трекера: режим (ADR-002)');
   /*

@@ -17,11 +17,16 @@
  * — **Не падает кокпит.** Нет ключа, модель недоступна, исчерпан предел —
  *   это ответы `ai_unavailable` и `rate_limited`, а не пятисотые: при
  *   отказе ассистента остальное приложение работает полностью (NFR-07).
+ *
+ * Без ключа (режим `auto`) отвечает демо-режим: настоящие инструменты и
+ * ответ по шаблону из их чисел (`src/lib/agent/demo.ts`). Экран помечает
+ * это заранее — выдавать шаблон за модель нельзя.
  */
 
 import type { ContentBlockParam, MessageParam } from '@anthropic-ai/sdk/resources/messages';
 
-import { anthropic, CALL_PARAMS } from '@/lib/agent/client';
+import { agentMode, anthropic, CALL_PARAMS } from '@/lib/agent/client';
+import { runDemoTurn } from '@/lib/agent/demo-run';
 import { executeTool, type AgentContext } from '@/lib/agent/execute';
 import { checkDailyLimit } from '@/lib/agent/limits';
 import { MAX_TOOL_ITERATIONS, systemPrompt } from '@/lib/agent/prompt';
@@ -77,12 +82,19 @@ export async function POST(request: Request) {
     );
   }
 
-  const client = anthropic();
-  if (!client) {
+  /*
+    Режим решается до создания диалога. Выключенный ассистент не должен
+    оставлять в истории пустых диалогов, а демо-режим — проходить тот же
+    путь, что живой: предел, диалог, журнал. Иначе демо показывало бы на
+    защите не то, как приложение работает, а то, как работает заглушка.
+  */
+  const mode = agentMode();
+  const client = mode === 'live' ? anthropic() : null;
+  if (mode === 'off' || (mode === 'live' && !client)) {
     return fail(
       503,
       'ai_unavailable',
-      'Ассистент не настроен: не задан ключ Claude API. Метрики, прогноз и сценарии работают без него.',
+      'Ассистент недоступен: не задан ключ Claude API или ассистент выключен. Метрики, прогноз и сценарии работают без него.',
     );
   }
 
@@ -178,7 +190,24 @@ export async function POST(request: Request) {
       try {
         send({ type: 'session', sessionId });
 
-        for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration += 1) {
+        if (mode === 'demo') {
+          /*
+            Демо-режим: те же инструменты и те же события, ответ — шаблон
+            из их чисел. Сверка чисел ниже работает и для него, и это
+            проверка уже самого шаблона: число, которого нет в результатах
+            инструментов, в демо-ответе — такой же дефект, как у модели.
+          */
+          const turn = await runDemoTurn(input.message, input.releaseId, agentContext, send);
+          answer = turn.answer;
+          toolResults.push(...turn.toolResults);
+          toolCalls.push(...turn.toolCalls);
+        }
+
+        for (
+          let iteration = 0;
+          client && iteration < MAX_TOOL_ITERATIONS;
+          iteration += 1
+        ) {
           const run = client.messages.stream({
             ...CALL_PARAMS,
             system: [
@@ -283,6 +312,7 @@ export async function POST(request: Request) {
 
         send({
           type: 'done',
+          mode,
           usage: { inputTokens, outputTokens, toolCalls: toolCalls.length },
           // Поле отдаётся наружу для отладки и для теста: показывать его
           // пользователю интерфейс не обязан.
