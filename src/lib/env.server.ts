@@ -44,6 +44,14 @@ const schema = z.object({
    * административным клиентом, в обход политик.
    */
   CRON_SECRET: z.string().min(16, 'пароль планировщика короче 16 символов').optional(),
+  /**
+   * Доступ к Yandex Tracker (FR-40). Необязательны, и это не поблажка:
+   * в режиме demo их не должно быть вовсе — ADR-002 запрещает публичному
+   * демо касаться корпоративного источника. Маршрут импорта проверяет и
+   * режим, и наличие доступа, и отказывает по отдельности.
+   */
+  TRACKER_OAUTH_TOKEN: z.string().optional(),
+  TRACKER_ORG_ID: z.string().optional(),
 });
 
 const parsed = schema.safeParse({
@@ -55,6 +63,8 @@ const parsed = schema.safeParse({
   ANTHROPIC_MODEL_LIGHT: process.env.ANTHROPIC_MODEL_LIGHT,
   AGENT_DAILY_LIMIT: process.env.AGENT_DAILY_LIMIT,
   CRON_SECRET: process.env.CRON_SECRET,
+  TRACKER_OAUTH_TOKEN: process.env.TRACKER_OAUTH_TOKEN,
+  TRACKER_ORG_ID: process.env.TRACKER_ORG_ID,
 });
 
 if (!parsed.success) {

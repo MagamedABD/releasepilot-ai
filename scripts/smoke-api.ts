@@ -516,7 +516,30 @@ async function main() {
   const stillAlive = await get(`/api/releases/${target.id}/metrics`, cookie);
   check(stillAlive.status === 200, 'метрики после отказа ассистента — 200', `HTTP ${stillAlive.status}`);
 
-  console.log('\n13. Чего быть не должно');
+  console.log('\n13. Импорт из трекера: режим (ADR-002)');
+  /*
+    Проверка целиком про отказ, и это единственное, что здесь можно
+    проверить честно: демо работает в режиме demo, а эндпоинт в нём не
+    должен делать ничего — ни ходить в трекер, ни читать тело запроса.
+    Корпоративный путь живьём не проверялся: это чужие данные.
+  */
+  const tracker = await post('/api/import/tracker', cookie, {
+    projectId: target.projectId,
+    queue: 'PPT',
+  });
+  const trackerError = (tracker.body as { error?: { code: string; message: string } })?.error;
+  check(
+    tracker.status === 409 && trackerError?.code === 'mode_required',
+    'в демо-режиме импорт из трекера отклонён',
+    `HTTP ${tracker.status} ${trackerError?.code ?? ''}`,
+  );
+  check(
+    Boolean(trackerError?.message?.includes('синтетических')),
+    'отказ объясняет, почему так, а не просто запрещает',
+    trackerError?.message,
+  );
+
+  console.log('\n14. Чего быть не должно');
   const bad = await get(`/api/releases/${target.id}/forecast?targetDate=2026-02-30`, cookie);
   check(bad.status === 422, 'тридцатое февраля отклонено, а не перекатано в март', `HTTP ${bad.status}`);
 
