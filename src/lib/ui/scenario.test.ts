@@ -7,6 +7,7 @@ import {
   levelChange,
   lowerLevel,
   pct,
+  probabilityText,
   signed,
 } from './scenario';
 
@@ -102,5 +103,22 @@ describe('уровень в родительном падеже', () => {
     expect(LEVEL_GENITIVE.medium).toBe('среднего');
     // «среднего» — мягкая основа, поэтому окончание и «-ого», и «-его».
     expect(Object.values(LEVEL_GENITIVE).every((v) => /(ого|его)$/.test(v))).toBe(true);
+  });
+});
+
+describe('probabilityText', () => {
+  it('называет вероятность, когда она есть', () => {
+    expect(probabilityText({ probabilityOnTime: 0.38, degraded: null })).toBe(
+      'Вероятность выпуска в срок 38%',
+    );
+  });
+
+  it('объясняет, почему её нет, вместо «—» (FR-22)', () => {
+    expect(
+      probabilityText({
+        probabilityOnTime: null,
+        degraded: { completedReleases: 1, requiredReleases: 3 },
+      }),
+    ).toBe('Вероятность не оценивается: мало истории (1 из 3 выпущенных релизов)');
   });
 });

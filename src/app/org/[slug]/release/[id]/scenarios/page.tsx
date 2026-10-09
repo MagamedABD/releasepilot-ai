@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { RiskBadge } from '@/components/cockpit';
@@ -18,7 +17,7 @@ import {
   LEVEL_GENITIVE,
   direction,
   lowerLevel,
-  pct,
+  probabilityText,
   signed,
 } from '@/lib/ui/scenario';
 
@@ -102,20 +101,14 @@ export default async function ScenariosPage({
     suggestion && suggestion.kind !== 'already_met' ? suggestion.taskIds : [];
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-8 sm:py-10">
+    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 pt-6 pb-8 sm:pb-10">
       <div>
-        <Link
-          href={`/org/${slug}/release/${id}`}
-          className="text-sm opacity-60 transition hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-        >
-          ← Кокпит релиза
-        </Link>
-        <header className="mt-4 flex flex-wrap items-start justify-between gap-4">
+        <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-wide opacity-50">Сценарии</p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">{release.name}</h1>
             <p className="mt-1 text-sm opacity-60">
-              Вероятность выпуска в срок {pct(forecast.probabilityOnTime)} · остаток{' '}
+              {probabilityText(forecast)} · остаток{' '}
               {hours(metrics.effort.remainingH)}
             </p>
           </div>

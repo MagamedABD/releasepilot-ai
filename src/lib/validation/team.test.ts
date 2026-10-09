@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { capacityPutSchema, capacityQuerySchema, teamQuerySchema } from './team';
+import {
+  absenceCreateSchema,
+  capacityPutSchema,
+  capacityQuerySchema,
+  memberPutSchema,
+  teamCreateSchema,
+  teamQuerySchema,
+  teamUpdateSchema,
+} from './team';
 
 describe('teamQuerySchema', () => {
   it('принимает пустой запрос: список команд не требует фильтров', () => {
@@ -57,5 +65,41 @@ describe('capacityPutSchema', () => {
   it('не пропускает несуществующий день', () => {
     // Date.parse перекатил бы его в 2 марта, и период молча сдвинулся бы.
     expect(capacityPutSchema.safeParse({ ...base, periodStart: '2026-02-30' }).success).toBe(false);
+  });
+});
+
+describe('правка команд и отсутствий', () => {
+  const ORG = '11111111-1111-4111-8111-111111111111';
+  const P = '22222222-2222-4222-8222-222222222222';
+
+  it('команда: вид по умолчанию — other, пустое имя отклоняется', () => {
+    expect(teamCreateSchema.parse({ orgId: ORG, name: ' QA ' })).toEqual({
+      orgId: ORG,
+      name: 'QA',
+      kind: 'other',
+    });
+    expect(teamCreateSchema.safeParse({ orgId: ORG, name: '  ' }).success).toBe(false);
+  });
+
+  it('правка команды без полей отклоняется', () => {
+    expect(teamUpdateSchema.safeParse({}).success).toBe(false);
+    expect(teamUpdateSchema.parse({ kind: 'qa' })).toEqual({ kind: 'qa' });
+  });
+
+  it('доля участника — целое от 1 до 100, по умолчанию 100', () => {
+    expect(memberPutSchema.parse({ profileId: P }).allocationPct).toBe(100);
+    expect(memberPutSchema.safeParse({ profileId: P, allocationPct: 0 }).success).toBe(false);
+    expect(memberPutSchema.safeParse({ profileId: P, allocationPct: 50.5 }).success).toBe(false);
+  });
+
+  it('отсутствие: конец не раньше начала, ошибка — на поле конца', () => {
+    const r = absenceCreateSchema.safeParse({
+      orgId: ORG,
+      profileId: P,
+      startDate: '2026-10-10',
+      endDate: '2026-10-09',
+    });
+    expect(r.success).toBe(false);
+    expect(r.error?.issues[0].path).toEqual(['endDate']);
   });
 });

@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { Stat } from '@/components/cockpit';
@@ -51,13 +50,7 @@ export default async function AnalyticsPage({ params }: PageProps<'/org/[slug]/a
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-8 sm:py-10">
       <div>
-        <Link
-          href={`/org/${slug}`}
-          className="text-sm opacity-60 transition hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-        >
-          ← Все релизы
-        </Link>
-        <header className="mt-4">
+        <header className="">
           <p className="text-xs font-medium uppercase tracking-wide opacity-50">Аналитика</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">{org.name}</h1>
           <p className="mt-1 text-sm opacity-60">История поставки по выпущенным релизам</p>

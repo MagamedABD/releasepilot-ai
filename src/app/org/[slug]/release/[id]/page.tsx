@@ -2,7 +2,9 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { PlannedDate, Readiness, RiskBadge, Stat, TeamLoadBars } from '@/components/cockpit';
+import { ReleaseEditor } from '@/components/release-editor';
 import { calculateRelease } from '@/domain/risk';
+import { canManage, loadRole } from '@/lib/data/role';
 import { loadReleaseSnapshot } from '@/lib/data/snapshot';
 import { createClient } from '@/lib/supabase/server';
 import { RELEASE_STATUS, RISK_LEVEL, days, hours, plural, reasonHref, reasonText, reasonWeight } from '@/lib/ui/risk';
@@ -24,8 +26,12 @@ export const metadata = { title: 'Релиз — ReleasePilot AI' };
  * страница — «не найдено». Отказ вместо пустоты подтвердил бы, что релиз
  * с таким идентификатором существует.
  */
-export default async function ReleasePage({ params }: PageProps<'/org/[slug]/release/[id]'>) {
+export default async function ReleasePage({
+  params,
+  searchParams,
+}: PageProps<'/org/[slug]/release/[id]'>) {
   const { slug, id } = await params;
+  const editing = (await searchParams).edit === '1';
   const supabase = await createClient();
 
   // Строка релиза и снимок независимы — берём разом. Снимок не содержит
@@ -33,7 +39,7 @@ export default async function ReleasePage({ params }: PageProps<'/org/[slug]/rel
   const [releaseRes, snapshot] = await Promise.all([
     supabase
       .from('releases')
-      .select('id, name, status, planned_date, released_at, projects(key), organizations(slug)')
+      .select('id, org_id, name, status, planned_date, released_at, projects(key), organizations(slug)')
       .eq('id', id)
       .maybeSingle(),
     loadReleaseSnapshot(supabase, id),
@@ -51,18 +57,13 @@ export default async function ReleasePage({ params }: PageProps<'/org/[slug]/rel
   const done = release.status === 'released' || release.status === 'cancelled';
   const byId = new Map<string, Task>(snapshot.tasks.map((t) => [t.id, t]));
   const projectKey = (release.projects as { key: string } | null)?.key ?? '—';
+  const editable = canManage(await loadRole(supabase, release.org_id));
+  const base = `/org/${slug}/release/${id}`;
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-8 sm:py-10">
+    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 pt-6 pb-8 sm:pb-10">
       <div>
-        <Link
-          href={`/org/${slug}`}
-          className="text-sm opacity-60 transition hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-        >
-          ← Все релизы
-        </Link>
-
-        <header className="mt-4 flex flex-wrap items-start justify-between gap-4">
+        <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-wide opacity-50">
               {projectKey} · {RELEASE_STATUS[release.status] ?? release.status}
@@ -101,6 +102,15 @@ export default async function ReleasePage({ params }: PageProps<'/org/[slug]/rel
             >
               Спросить ассистента →
             </Link>
+            {editable ? (
+              <Link
+                href={`${base}?edit=1`}
+                scroll={false}
+                className="rounded-lg border border-black/15 px-3 py-1 text-sm transition hover:bg-black/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:border-white/20 dark:hover:bg-white/10"
+              >
+                Изменить релиз
+              </Link>
+            ) : null}
           </div>
         </header>
       </div>
@@ -147,6 +157,23 @@ export default async function ReleasePage({ params }: PageProps<'/org/[slug]/rel
           <Details metrics={m} />
         </>
       )}
+
+      {editing ? (
+        <ReleaseEditor
+          release={{
+            id: release.id,
+            name: release.name,
+            status: release.status,
+            plannedDate: release.planned_date,
+          }}
+          orgId={release.org_id}
+          projects={[]}
+          canEdit={editable}
+          closeHref={base}
+          afterDeleteHref={`/org/${slug}`}
+          releaseBase={`/org/${slug}/release/`}
+        />
+      ) : null}
     </div>
   );
 }

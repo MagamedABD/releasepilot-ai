@@ -1,42 +1,17 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
-import { logout } from '@/app/(auth)/actions';
 import { PlannedDate, Readiness, RiskBadge, Stat } from '@/components/cockpit';
+import { ADD_BUTTON } from '@/components/editor';
+import { ReleaseEditor } from '@/components/release-editor';
 import { EmptyState } from '@/components/states';
+import { canManage, loadRole } from '@/lib/data/role';
 import { loadOrgReleases, type ReleaseWithMetrics } from '@/lib/data/snapshot';
 import { createClient } from '@/lib/supabase/server';
+import { byUrgency } from '@/lib/ui/releases';
 import { RELEASE_STATUS, reasonText } from '@/lib/ui/risk';
 
 export const metadata = { title: 'Релизы — ReleasePilot AI' };
-
-/**
- * Порядок релизов на экране.
- *
- * Не по дате. Менеджер открывает список, чтобы узнать, где горит, а не
- * чтобы посмотреть календарь. Поэтому сверху идут идущие релизы, ниже
- * запланированные, в самом низу выпущенные и отменённые — про них решение
- * уже принято.
- *
- * Внутри группы — по скору, а не по уровню. Уровень грубый: два релиза
- * могут оба оказаться «высокими» при скорах 39 и 8, и тогда список,
- * отсортированный по уровню, поставит их рядом как равные. Скор разводит.
- */
-const STATUS_ORDER: Record<string, number> = {
-  active: 0,
-  planned: 1,
-  postponed: 2,
-  released: 3,
-  cancelled: 4,
-};
-
-function byUrgency(a: ReleaseWithMetrics, b: ReleaseWithMetrics): number {
-  const order = (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9);
-  if (order !== 0) return order;
-  const score = b.metrics.riskScore - a.metrics.riskScore;
-  if (score !== 0) return score;
-  return a.plannedDate.localeCompare(b.plannedDate);
-}
 
 /**
  * Список релизов организации.
@@ -47,8 +22,9 @@ function byUrgency(a: ReleaseWithMetrics, b: ReleaseWithMetrics): number {
  * а не «доступ запрещён». Разница существенна: отказ подтверждает, что
  * организация с таким адресом есть.
  */
-export default async function ReleasesPage({ params }: PageProps<'/org/[slug]'>) {
+export default async function ReleasesPage({ params, searchParams }: PageProps<'/org/[slug]'>) {
   const { slug } = await params;
+  const creating = (await searchParams).release === 'new';
   const supabase = await createClient();
 
   const { data: org } = await supabase
@@ -59,39 +35,42 @@ export default async function ReleasesPage({ params }: PageProps<'/org/[slug]'>)
 
   if (!org) notFound();
 
-  const releases = (await loadOrgReleases(supabase, org.id)).sort(byUrgency);
+  const [all, role, projectsRes] = await Promise.all([
+    loadOrgReleases(supabase, org.id),
+    loadRole(supabase, org.id),
+    supabase.from('projects').select('id, name, key').eq('org_id', org.id).order('name'),
+  ]);
+  const releases = all.sort(byUrgency);
+  const editable = canManage(role);
+  const newHref = `/org/${slug}?release=new`;
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-8 sm:py-10">
-      <header className="flex flex-wrap items-baseline justify-between gap-4">
+      <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{org.name}</h1>
           <p className="mt-1 text-sm opacity-60">
             Релизы{releases.length ? ` · ${releases.length}` : ''}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Link
-            href={`/org/${slug}/analytics`}
-            className="rounded-lg border border-black/15 px-3 py-1.5 text-sm transition hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
-          >
-            Аналитика
+        {editable ? (
+          <Link href={newHref} scroll={false} className={ADD_BUTTON}>
+            + Новый релиз
           </Link>
-          <form action={logout}>
-            <button
-              type="submit"
-              className="rounded-lg border border-black/15 px-3 py-1.5 text-sm transition hover:bg-black/5 dark:border-white/20 dark:hover:bg-white/10"
-            >
-              Выйти
-            </button>
-          </form>
-        </div>
+        ) : null}
       </header>
 
       {releases.length === 0 ? (
         <EmptyState
           title="Релизов пока нет"
           description="Здесь появится готовность, риск и узкие места по каждому релизу. Создайте релиз или загрузите данные из трекера."
+          action={
+            editable ? (
+              <Link href={newHref} scroll={false} className={ADD_BUTTON}>
+                + Создать первый релиз
+              </Link>
+            ) : undefined
+          }
         />
       ) : (
         /*
@@ -111,6 +90,18 @@ export default async function ReleasesPage({ params }: PageProps<'/org/[slug]'>)
           ))}
         </ul>
       )}
+
+      {creating ? (
+        <ReleaseEditor
+          release={null}
+          orgId={org.id}
+          projects={(projectsRes.data ?? []).map((p) => ({ value: p.id, label: `${p.key} · ${p.name}` }))}
+          canEdit={editable}
+          closeHref={`/org/${slug}`}
+          afterDeleteHref={`/org/${slug}`}
+          releaseBase={`/org/${slug}/release/`}
+        />
+      ) : null}
     </div>
   );
 }

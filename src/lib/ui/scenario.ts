@@ -52,6 +52,24 @@ export function pct(share: number | null, digits = 0): string {
   return share === null ? '—' : `${(share * 100).toFixed(digits)}%`;
 }
 
+/**
+ * Вероятность выпуска в срок — или прямое объяснение, почему её нет
+ * (FR-22). Голое «—» читается как сбой; на деле это сознательный отказ:
+ * без истории выпусков прогноз упрощённый и вероятности не даёт.
+ */
+export function probabilityText(forecast: {
+  probabilityOnTime: number | null;
+  degraded: { completedReleases: number; requiredReleases: number } | null;
+}): string {
+  if (forecast.probabilityOnTime !== null) {
+    return `Вероятность выпуска в срок ${pct(forecast.probabilityOnTime)}`;
+  }
+  const d = forecast.degraded;
+  return d
+    ? `Вероятность не оценивается: мало истории (${d.completedReleases} из ${d.requiredReleases} выпущенных релизов)`
+    : 'Вероятность не оценивается';
+}
+
 const ORDER: RiskLevel[] = ['low', 'medium', 'high', 'critical'];
 
 /**

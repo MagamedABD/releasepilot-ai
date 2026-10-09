@@ -94,3 +94,69 @@ export const capacityPutSchema = z
 export type TeamQuery = z.infer<typeof teamQuerySchema>;
 export type CapacityQuery = z.infer<typeof capacityQuerySchema>;
 export type CapacityPutInput = z.infer<typeof capacityPutSchema>;
+
+// ── Правка команд, состава и отсутствий (FR-10, FR-11) ──────────────────────
+
+const teamName = z
+  .string()
+  .trim()
+  .min(1, 'Укажите название')
+  .max(80, 'Слишком длинное название');
+const teamKind = z.enum(TEAM_KINDS, { message: 'Неизвестный вид команды' });
+
+/**
+ * Организация приходит от клиента — как у проекта, и по той же причине:
+ * у команды нет родителя, из которого её можно вывести. Подменить её
+ * нельзя: вставку в чужую организацию не пропустит политика RLS.
+ */
+export const teamCreateSchema = z.object({
+  orgId: uuid,
+  name: teamName,
+  kind: teamKind.default('other'),
+});
+
+export const teamUpdateSchema = z
+  .object({ name: teamName, kind: teamKind })
+  .partial()
+  .refine((v) => Object.keys(v).length > 0, {
+    message: 'Не указано ни одного поля для изменения',
+  });
+
+/**
+ * Участник команды. Доля — сколько своего времени человек отдаёт этой
+ * команде: по ней отпуск уменьшает ёмкость каждой из его команд.
+ */
+export const memberPutSchema = z.object({
+  profileId: uuid,
+  allocationPct: z
+    .number({ message: 'Ожидается процент' })
+    .int('Процент — целое число')
+    .min(1, 'Доля — от 1 до 100%')
+    .max(100, 'Доля — от 1 до 100%')
+    .default(100),
+});
+
+export const memberDeleteSchema = z.object({ profileId: uuid });
+
+export const capacityDeleteSchema = z.object({
+  periodStart: calendarDate,
+  periodEnd: calendarDate,
+});
+
+export const absenceCreateSchema = z
+  .object({
+    orgId: uuid,
+    profileId: uuid,
+    startDate: calendarDate,
+    endDate: calendarDate,
+    reason: z.string().trim().max(200, 'Слишком длинная причина').nullish(),
+  })
+  .refine((v) => v.startDate <= v.endDate, {
+    message: 'Конец отсутствия раньше его начала',
+    path: ['endDate'],
+  });
+
+export type TeamCreateInput = z.infer<typeof teamCreateSchema>;
+export type TeamUpdateInput = z.infer<typeof teamUpdateSchema>;
+export type MemberPutInput = z.infer<typeof memberPutSchema>;
+export type AbsenceCreateInput = z.infer<typeof absenceCreateSchema>;

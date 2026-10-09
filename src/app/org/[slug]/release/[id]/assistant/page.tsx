@@ -1,15 +1,16 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { Assistant } from '@/components/assistant';
 import { RiskBadge } from '@/components/cockpit';
+import { StatusCard } from '@/components/status-card';
 import { RISK_CONFIG } from '@/domain/config';
 import { forecastRelease } from '@/domain/forecast';
 import { calculateRelease } from '@/domain/risk';
 import { loadReleaseContext } from '@/lib/data/context';
 import { createClient } from '@/lib/supabase/server';
 import { hours } from '@/lib/ui/risk';
-import { pct } from '@/lib/ui/scenario';
+import { probabilityText } from '@/lib/ui/scenario';
+import { executiveStatus } from '@/lib/ui/status';
 
 export const metadata = { title: 'Ассистент — ReleasePilot AI' };
 
@@ -34,7 +35,7 @@ export default async function AssistantPage({
   const [releaseRes, context] = await Promise.all([
     supabase
       .from('releases')
-      .select('id, name, org_id, organizations(slug)')
+      .select('id, name, org_id, planned_date, organizations(slug)')
       .eq('id', id)
       .maybeSingle(),
     loadReleaseContext(supabase, id),
@@ -51,26 +52,29 @@ export default async function AssistantPage({
   });
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 py-8 sm:py-10">
+    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 pt-6 pb-8 sm:pb-10">
       <div>
-        <Link
-          href={`/org/${slug}/release/${id}`}
-          className="text-sm opacity-60 transition hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-        >
-          ← Кокпит релиза
-        </Link>
-        <header className="mt-4 flex flex-wrap items-start justify-between gap-4">
+        <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-wide opacity-50">Ассистент</p>
             <h1 className="mt-1 text-2xl font-semibold tracking-tight">{release.name}</h1>
             <p className="mt-1 text-sm opacity-60">
-              Вероятность выпуска в срок {pct(forecast.probabilityOnTime)} · остаток{' '}
+              {probabilityText(forecast)} · остаток{' '}
               {hours(metrics.effort.remainingH)} · готовность {metrics.readinessPct.toFixed(1)}%
             </p>
           </div>
           <RiskBadge level={metrics.riskLevel} score={metrics.riskScore} />
         </header>
       </div>
+
+      <StatusCard
+        lines={executiveStatus({
+          name: release.name,
+          plannedDate: release.planned_date,
+          metrics,
+          forecast,
+        })}
+      />
 
       <Assistant slug={slug} orgId={release.org_id} releaseId={id} />
     </div>

@@ -144,10 +144,18 @@ export function reasonText(reason: RiskReason): string {
   switch (reason.code) {
     case 'TIME_DEFICIT': {
       const left = Math.round(num(f.remainingWorkingDays));
+      // Дата наступила или прошла: делить остаток не на что, и отношение
+      // бесконечно. «Требует Infinity% времени» — правда, но не по-русски.
+      if (!Number.isFinite(num(f.demandRatio)) || left <= 0) {
+        return 'Плановая дата наступила, а работа не закончена — времени до даты не осталось';
+      }
       return `Работ больше, чем ёмкости: остаток требует ${pct(num(f.demandRatio))} доступного времени при ${left} рабочих ${plural(left, 'дне', 'днях', 'днях')} до даты`;
     }
     case 'TEAM_OVERLOAD':
-      return `Команда «${f.team}» загружена на ${pct(num(f.load))}`;
+      // Бесконечная загрузка — работа есть, а ёмкости до даты нет вовсе.
+      return Number.isFinite(num(f.load))
+        ? `Команда «${f.team}» загружена на ${pct(num(f.load))}`
+        : `У команды «${f.team}» есть работа, но не осталось ёмкости до даты`;
     case 'BLOCKERS': {
       const n = num(f.blockedCount);
       const stale = num(f.staleCount);
@@ -168,7 +176,9 @@ export function reasonText(reason: RiskReason): string {
     case 'MULTIPLE_P1_BLOCKED':
       return `Заблокировано ${num(f.count)} ${plural(num(f.count), 'задача', 'задачи', 'задач')} приоритета P1`;
     case 'TEAM_OVERLOAD_RULE':
-      return `Загрузка команды «${f.team}» — ${pct(num(f.load))}, порог ${pct(num(f.threshold))}`;
+      return Number.isFinite(num(f.load))
+        ? `Загрузка команды «${f.team}» — ${pct(num(f.load))}, порог ${pct(num(f.threshold))}`
+        : `У команды «${f.team}» есть работа, но не осталось ёмкости до даты`;
     case 'CHAIN_EXCEEDS_TIME':
       return `Цепочка ${days(num(f.chainDays))} при ${Math.round(num(f.remainingWorkingDays))} оставшихся — релиз не успевает по зависимостям`;
     case 'LOW_PROBABILITY':

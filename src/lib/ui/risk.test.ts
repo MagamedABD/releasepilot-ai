@@ -102,6 +102,22 @@ describe('reasonText', () => {
     );
   });
 
+  it('нулевая ёмкость — словами, а не «Infinity%»', () => {
+    for (const code of ['TEAM_OVERLOAD', 'TEAM_OVERLOAD_RULE'] as const) {
+      const text = reasonText(reason({ code, facts: { team: 'Фронтенд', load: Infinity, threshold: 1.2 } }));
+      expect(text).not.toContain('Infinity');
+      expect(text).toContain('не осталось ёмкости');
+    }
+  });
+
+  it('прошедшая дата — словами, а не «Infinity%»', () => {
+    const text = reasonText(
+      reason({ code: 'TIME_DEFICIT', facts: { demandRatio: Infinity, remainingWorkingDays: 0 } }),
+    );
+    expect(text).not.toContain('Infinity');
+    expect(text).toContain('времени до даты не осталось');
+  });
+
   it('объясняет нехватку времени по цепочке словами, а не числом', () => {
     expect(
       reasonText(

@@ -20,6 +20,7 @@ import {
   fromPostgres,
   invalid,
   isUuid,
+  noContent,
   notFound,
   ok,
   readJson,
@@ -27,7 +28,11 @@ import {
 } from '@/lib/api/http';
 import { toApiCapacity, toCapacityInsert } from '@/lib/api/team';
 import { createClient } from '@/lib/supabase/server';
-import { capacityPutSchema, capacityQuerySchema } from '@/lib/validation/team';
+import {
+  capacityDeleteSchema,
+  capacityPutSchema,
+  capacityQuerySchema,
+} from '@/lib/validation/team';
 
 type Context = RouteContext<'/api/teams/[id]/capacity'>;
 
@@ -114,4 +119,28 @@ export async function PUT(request: Request, { params }: Context) {
   if (error) return fromPostgres(error);
 
   return ok(toApiCapacity(data));
+}
+
+/** Удалить ёмкость на период — например, заведённую с ошибкой в датах. */
+export async function DELETE(request: Request, { params }: Context) {
+  const { id } = await params;
+  if (!isUuid(id)) return notFound();
+
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getClaims();
+  if (!auth?.claims) return unauthorized();
+
+  const parsed = capacityDeleteSchema.safeParse(
+    Object.fromEntries(new URL(request.url).searchParams),
+  );
+  if (!parsed.success) return invalid(parsed.error);
+
+  const { error } = await supabase
+    .from('team_capacity')
+    .delete()
+    .eq('team_id', id)
+    .eq('period_start', parsed.data.periodStart)
+    .eq('period_end', parsed.data.periodEnd);
+  if (error) return fromPostgres(error);
+  return noContent();
 }

@@ -21,9 +21,13 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+import { ADD_BUTTON } from '@/components/editor';
 import { EmptyState } from '@/components/states';
+import { TaskEditor } from '@/components/task-editor';
 import { RISK_CONFIG } from '@/domain/config';
 import { isOpenStatus } from '@/domain/metrics';
+import { canManage, loadRole } from '@/lib/data/role';
+import { loadTaskEditor } from '@/lib/data/task-editor';
 import { selectTasks, type TaskRow } from '@/lib/data/tasks';
 import { createClient } from '@/lib/supabase/server';
 import { TASK_PRIORITY, TASK_STATUS, days, hours, plural } from '@/lib/ui/risk';
@@ -47,6 +51,8 @@ type TaskListProps = {
   rows: TaskRow[];
   teamName: Map<string, string>;
   now: number;
+  /** Адрес панели задачи — тот же список с `?task=<id>`. */
+  openHref: (taskId: string) => string;
 };
 
 /**
@@ -78,7 +84,12 @@ function href(slug: string, filters: Filters, changes: Filters = {}): string {
 
 export default async function TasksPage({ params, searchParams }: PageProps<'/org/[slug]/tasks'>) {
   const { slug } = await params;
-  const filters = flatten(await searchParams);
+  /*
+    `task` — не фильтр, а открытая панель. Её вынимают сразу: иначе она
+    попала бы в признак «фильтр задан» и в ссылки пагинации, и переход на
+    вторую страницу открывал бы ту же панель снова.
+  */
+  const { task: openTask, ...filters } = flatten(await searchParams);
   const supabase = await createClient();
 
   // Организации проверки на членство здесь нет намеренно: её делает RLS.
@@ -104,7 +115,7 @@ export default async function TasksPage({ params, searchParams }: PageProps<'/or
   */
   if (!parsed.success) {
     return (
-      <Shell slug={slug} orgName={org.name}>
+      <Shell>
         <EmptyState
           title="Не разобрать фильтры в адресе"
           description="Похоже, ссылка повреждена при пересылке. Откройте список без фильтров и задайте их заново."
@@ -123,7 +134,7 @@ export default async function TasksPage({ params, searchParams }: PageProps<'/or
 
   const query = { ...parsed.data, orgId: org.id };
 
-  const [page, teamsRes, releasesRes] = await Promise.all([
+  const [page, teamsRes, releasesRes, role, editor] = await Promise.all([
     selectTasks(supabase, query),
     supabase.from('teams').select('id, name').eq('org_id', org.id).order('name'),
     supabase
@@ -131,7 +142,11 @@ export default async function TasksPage({ params, searchParams }: PageProps<'/or
       .select('id, name')
       .eq('org_id', org.id)
       .order('planned_date', { ascending: false }),
+    loadRole(supabase, org.id),
+    openTask ? loadTaskEditor(supabase, org.id, openTask) : Promise.resolve(null),
   ]);
+  const editable = canManage(role);
+  const openHref = (id: string) => href(slug, filters, { task: id });
 
   // Наружу текст ошибки не идёт (NFR-08) — её подхватит error.tsx рядом.
   if (page.error) throw new Error('Не удалось загрузить задачи');
@@ -149,16 +164,23 @@ export default async function TasksPage({ params, searchParams }: PageProps<'/or
   const filtered = Object.keys(filters).some((k) => k !== 'limit' && k !== 'offset');
 
   return (
-    <Shell slug={slug} orgName={org.name}>
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Задачи</h1>
-        <p className="mt-1 text-sm opacity-60">
-          {total === 0
-            ? filtered
-              ? 'Ни одной задачи под такой фильтр'
-              : 'Задач пока нет'
-            : `Показано ${from}–${to} из ${total} ${plural(total, 'задачи', 'задач', 'задач')}`}
-        </p>
+    <Shell>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Задачи</h1>
+          <p className="mt-1 text-sm opacity-60">
+            {total === 0
+              ? filtered
+                ? 'Ни одной задачи под такой фильтр'
+                : 'Задач пока нет'
+              : `Показано ${from}–${to} из ${total} ${plural(total, 'задачи', 'задач', 'задач')}`}
+          </p>
+        </div>
+        {editable ? (
+          <Link href={openHref('new')} scroll={false} className={ADD_BUTTON}>
+            + Новая задача
+          </Link>
+        ) : null}
       </div>
 
       <FilterForm slug={slug} filters={filters} teams={teams} releases={releases} />
@@ -180,13 +202,20 @@ export default async function TasksPage({ params, searchParams }: PageProps<'/or
         ) : (
           <EmptyState
             title="В организации нет задач"
-            description="Здесь появятся задачи релизов: статус, приоритет, команда и длительность блокировки. Загрузите данные из трекера или создайте задачу через API."
+            description="Здесь появятся задачи релизов: статус, приоритет, команда и длительность блокировки."
+            action={
+              editable ? (
+                <Link href={openHref('new')} scroll={false} className={ADD_BUTTON}>
+                  + Создать первую задачу
+                </Link>
+              ) : undefined
+            }
           />
         )
       ) : (
         <>
-          <TaskTable rows={rows} teamName={teamName} now={now} />
-          <TaskCards rows={rows} teamName={teamName} now={now} />
+          <TaskTable rows={rows} teamName={teamName} now={now} openHref={openHref} />
+          <TaskCards rows={rows} teamName={teamName} now={now} openHref={openHref} />
           <Pager
             slug={slug}
             filters={filters}
@@ -196,29 +225,24 @@ export default async function TasksPage({ params, searchParams }: PageProps<'/or
           />
         </>
       )}
+
+      {editor ? (
+        <TaskEditor
+          key={openTask}
+          {...editor}
+          defaultReleaseId={filters.releaseId ?? null}
+          canEdit={editable}
+          closeHref={href(slug, filters)}
+        />
+      ) : null}
     </Shell>
   );
 }
 
 /** Общая обёртка: одна на все состояния, чтобы шапка не прыгала. */
-function Shell({
-  slug,
-  orgName,
-  children,
-}: {
-  slug: string;
-  orgName: string;
-  children: React.ReactNode;
-}) {
+function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-4 py-8 sm:py-10">
-      <nav className="text-sm opacity-60">
-        <Link href={`/org/${slug}`} className="underline-offset-4 hover:underline">
-          {orgName}
-        </Link>
-        <span aria-hidden> · </span>
-        <span>задачи</span>
-      </nav>
       {children}
     </div>
   );
@@ -382,7 +406,7 @@ function PriorityBadge({ priority }: { priority: TaskRow['priority'] }) {
 }
 
 /** Таблица — от планшета и шире. */
-function TaskTable({ rows, teamName, now }: TaskListProps) {
+function TaskTable({ rows, teamName, now, openHref }: TaskListProps) {
   return (
     <div className="hidden overflow-x-auto rounded-2xl border border-black/10 md:block dark:border-white/15">
       <table className="w-full border-collapse text-sm">
@@ -426,7 +450,13 @@ function TaskTable({ rows, teamName, now }: TaskListProps) {
                 прокрутка всей страницы вместо обрезки названия.
               */}
               <td className="max-w-xs truncate px-4 py-3" title={row.title}>
-                {row.title}
+                <Link
+                  href={openHref(row.id)}
+                  scroll={false}
+                  className="underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+                >
+                  {row.title}
+                </Link>
               </td>
               <td className="px-4 py-3">
                 <StatusBadge status={row.status} />
@@ -458,7 +488,7 @@ function TaskTable({ rows, teamName, now }: TaskListProps) {
  * нечитаемого, либо страница уезжает в горизонтальную прокрутку.
  * Концепция прямо требует превращать таблицы в карточки ниже 768 px.
  */
-function TaskCards({ rows, teamName, now }: TaskListProps) {
+function TaskCards({ rows, teamName, now, openHref }: TaskListProps) {
   return (
     <ul className="grid gap-3 md:hidden">
       {rows.map((row) => (
@@ -471,7 +501,9 @@ function TaskCards({ rows, teamName, now }: TaskListProps) {
             <PriorityBadge priority={row.priority} />
           </div>
 
-          <p className="mt-1 font-medium">{row.title}</p>
+          <Link href={openHref(row.id)} scroll={false} className="mt-1 block font-medium underline-offset-4 hover:underline">
+            {row.title}
+          </Link>
 
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
             <StatusBadge status={row.status} />

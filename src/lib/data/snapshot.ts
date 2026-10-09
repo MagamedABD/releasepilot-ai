@@ -13,6 +13,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { netCapacity } from '@/domain/capacity';
+import { RISK_CONFIG } from '@/domain/config';
 import { calculateRelease } from '@/domain/risk';
 import type { Database, TeamKind as DbTeamKind } from '@/lib/database.types';
 import type {
@@ -31,6 +33,8 @@ type TeamRow = Database['public']['Tables']['teams']['Row'];
 type TaskRow = Database['public']['Tables']['tasks']['Row'];
 type DependencyRow = Database['public']['Tables']['task_dependencies']['Row'];
 type CapacityRow = Database['public']['Tables']['team_capacity']['Row'];
+type MemberRow = Database['public']['Tables']['team_members']['Row'];
+type AbsenceRow = Database['public']['Tables']['absences']['Row'];
 type ReleaseRow = Database['public']['Tables']['releases']['Row'];
 
 /**
@@ -66,6 +70,13 @@ export type SnapshotRows = {
   tasks: TaskRow[];
   dependencies: Pick<DependencyRow, 'blocker_task_id' | 'blocked_task_id' | 'type'>[];
   capacity: Pick<CapacityRow, 'team_id' | 'period_start' | 'period_end' | 'available_hours'>[];
+  /**
+   * Состав команд и отсутствия — из них ёмкость уменьшается на отпуска
+   * (FR-11). Необязательны: без них ёмкость берётся номинальной, как
+   * раньше, и старые вызовы не меняют ответа.
+   */
+  members?: Pick<MemberRow, 'team_id' | 'profile_id' | 'allocation_pct'>[];
+  absences?: Pick<AbsenceRow, 'profile_id' | 'start_date' | 'end_date'>[];
   /** Нерабочие дни сверх обычных выходных. Таблицы под них пока нет. */
   holidays?: string[];
 };
@@ -102,12 +113,28 @@ export function toSnapshot(rows: SnapshotRows, now: string): ReleaseSnapshot {
     type: d.type,
   }));
 
-  const capacity: TeamCapacity[] = rows.capacity.map((c) => ({
+  const nominal: TeamCapacity[] = rows.capacity.map((c) => ({
     teamId: c.team_id,
     periodStart: c.period_start,
     periodEnd: c.period_end,
     availableHours: Number(c.available_hours),
   }));
+
+  const capacity = netCapacity(
+    nominal,
+    (rows.members ?? []).map((m) => ({
+      teamId: m.team_id,
+      profileId: m.profile_id,
+      allocationPct: m.allocation_pct,
+    })),
+    (rows.absences ?? []).map((a) => ({
+      profileId: a.profile_id,
+      startDate: a.start_date,
+      endDate: a.end_date,
+    })),
+    RISK_CONFIG.workingHoursPerDay,
+    new Set(rows.holidays ?? []),
+  );
 
   return {
     now,
@@ -152,12 +179,20 @@ export async function loadReleaseSnapshot(
   if (!release) return null;
 
   // Задачи, зависимости и ёмкость независимы друг от друга — берём разом.
-  const [tasksRes, teamsRes, capacityRes] = await Promise.all([
+  const [tasksRes, teamsRes, capacityRes, membersRes, absencesRes] = await Promise.all([
     supabase.from('tasks').select('*').eq('release_id', releaseId),
     supabase.from('teams').select('id, name, kind').eq('org_id', release.org_id),
     supabase
       .from('team_capacity')
       .select('team_id, period_start, period_end, available_hours')
+      .eq('org_id', release.org_id),
+    supabase
+      .from('team_members')
+      .select('team_id, profile_id, allocation_pct')
+      .eq('org_id', release.org_id),
+    supabase
+      .from('absences')
+      .select('profile_id, start_date, end_date')
       .eq('org_id', release.org_id),
   ]);
 
@@ -182,6 +217,8 @@ export async function loadReleaseSnapshot(
       tasks,
       dependencies: depsRes.data ?? [],
       capacity: capacityRes.data ?? [],
+      members: membersRes.data ?? [],
+      absences: absencesRes.data ?? [],
     },
     now,
   );
@@ -230,7 +267,7 @@ export async function loadOrgReleases(
   orgId: string,
   now: string = new Date().toISOString(),
 ): Promise<ReleaseWithMetrics[]> {
-  const [releasesRes, teamsRes, capacityRes, tasksRes, depsRes] = await Promise.all([
+  const [releasesRes, teamsRes, capacityRes, tasksRes, depsRes, membersRes, absencesRes] = await Promise.all([
     supabase
       .from('releases')
       .select('id, name, status, planned_date, started_at, released_at, projects(key)')
@@ -246,6 +283,8 @@ export async function loadOrgReleases(
       .from('task_dependencies')
       .select('blocker_task_id, blocked_task_id, type')
       .eq('org_id', orgId),
+    supabase.from('team_members').select('team_id, profile_id, allocation_pct').eq('org_id', orgId),
+    supabase.from('absences').select('profile_id, start_date, end_date').eq('org_id', orgId),
   ]);
 
   const releases = releasesRes.data ?? [];
@@ -286,6 +325,8 @@ export async function loadOrgReleases(
         tasks,
         dependencies,
         capacity,
+        members: membersRes.data ?? [],
+        absences: absencesRes.data ?? [],
       },
       now,
     );
