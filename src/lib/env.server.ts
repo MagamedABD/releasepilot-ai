@@ -22,6 +22,12 @@ const schema = z.object({
   LLM_PAYLOAD_LEVEL: z.enum(['metrics', 'titles', 'full']).default('metrics'),
   ANTHROPIC_API_KEY: z.string().optional(),
   /**
+   * Адрес совместимого с Anthropic сервера вместо облачного Claude API —
+   * например, локальная Ollama (`http://localhost:11434`). Задан — агент
+   * работает на локальной модели без ключа и без оплаты токенов.
+   */
+  ANTHROPIC_BASE_URL: z.string().url().optional(),
+  /**
    * Две модели, а не одна: рассуждение о релизе и переформулировка
    * реплики стоят по-разному, и платить за вторую как за первую незачем.
    *
@@ -54,17 +60,28 @@ const schema = z.object({
   TRACKER_ORG_ID: z.string().optional(),
 });
 
+/**
+ * Пустая строка в .env — это «не задано», а не значение.
+ *
+ * `cp .env.example .env.local` оставляет `CRON_SECRET=` пустым, и без
+ * этого правила необязательная переменная падала бы на проверке длины —
+ * а вместе с ней каждый маршрут, импортирующий этот модуль, включая
+ * ассистента.
+ */
+const unset = (v: string | undefined) => (v === '' ? undefined : v);
+
 const parsed = schema.safeParse({
   SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
   APP_MODE: process.env.APP_MODE,
   LLM_PAYLOAD_LEVEL: process.env.LLM_PAYLOAD_LEVEL,
-  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+  ANTHROPIC_API_KEY: unset(process.env.ANTHROPIC_API_KEY),
+  ANTHROPIC_BASE_URL: unset(process.env.ANTHROPIC_BASE_URL),
   ANTHROPIC_MODEL_MAIN: process.env.ANTHROPIC_MODEL_MAIN,
   ANTHROPIC_MODEL_LIGHT: process.env.ANTHROPIC_MODEL_LIGHT,
   AGENT_DAILY_LIMIT: process.env.AGENT_DAILY_LIMIT,
-  CRON_SECRET: process.env.CRON_SECRET,
-  TRACKER_OAUTH_TOKEN: process.env.TRACKER_OAUTH_TOKEN,
-  TRACKER_ORG_ID: process.env.TRACKER_ORG_ID,
+  CRON_SECRET: unset(process.env.CRON_SECRET),
+  TRACKER_OAUTH_TOKEN: unset(process.env.TRACKER_OAUTH_TOKEN),
+  TRACKER_ORG_ID: unset(process.env.TRACKER_ORG_ID),
 });
 
 if (!parsed.success) {

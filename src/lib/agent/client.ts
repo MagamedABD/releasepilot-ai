@@ -17,9 +17,18 @@ import { serverEnv } from '@/lib/env.server';
 
 let cached: Anthropic | null = null;
 
+/**
+ * Локальный режим: запросы уходят на совместимый сервер (Ollama), а не в
+ * облако. Ключ такому серверу не нужен, но SDK требует непустую строку.
+ */
+const isLocal = Boolean(serverEnv.ANTHROPIC_BASE_URL);
+
 export function anthropic(): Anthropic | null {
-  if (!serverEnv.ANTHROPIC_API_KEY) return null;
-  cached ??= new Anthropic({ apiKey: serverEnv.ANTHROPIC_API_KEY });
+  if (!isLocal && !serverEnv.ANTHROPIC_API_KEY) return null;
+  cached ??= new Anthropic({
+    apiKey: serverEnv.ANTHROPIC_API_KEY || 'local',
+    baseURL: serverEnv.ANTHROPIC_BASE_URL,
+  });
   return cached;
 }
 
@@ -37,6 +46,11 @@ export function anthropic(): Anthropic | null {
 export const CALL_PARAMS = {
   model: serverEnv.ANTHROPIC_MODEL_MAIN,
   max_tokens: 2048,
-  thinking: { type: 'adaptive' as const },
-  output_config: { effort: 'high' as const },
+  // `thinking` и `effort` — параметры Claude; локальная модель их не знает.
+  ...(isLocal
+    ? {}
+    : {
+        thinking: { type: 'adaptive' as const },
+        output_config: { effort: 'high' as const },
+      }),
 };
