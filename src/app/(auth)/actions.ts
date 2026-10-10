@@ -16,6 +16,7 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 
+import { env } from '@/lib/env';
 import { createClient } from '@/lib/supabase/server';
 import { translateAuthError } from '@/lib/supabase/auth-errors';
 import { loginSchema, registerSchema, toFieldErrors, type FormState } from '@/lib/validation/auth';
@@ -111,6 +112,37 @@ export async function register(_prevState: FormState, formData: FormData): Promi
   }
 
   redirect('/onboarding');
+}
+
+/**
+ * Вход через Google или GitHub (FR-01).
+ *
+ * Действие только начинает вход: Supabase отдаёт адрес страницы
+ * провайдера, и человек уходит туда. Возвращается он на `/auth/confirm` с
+ * кодом, который тот же маршрут, что и для ссылок из писем, меняет на
+ * сессию.
+ *
+ * Провайдер берётся из формы, поэтому сверяется со списком включённых:
+ * иначе запросом можно было бы начать вход через любого провайдера,
+ * включённого в проекте Supabase, но не предусмотренного приложением.
+ */
+export async function oauthLogin(formData: FormData): Promise<void> {
+  const provider = formData.get('provider');
+  const enabled = env.NEXT_PUBLIC_OAUTH_PROVIDERS;
+  if (provider !== 'google' && provider !== 'github') redirect('/login?error=oauth');
+  if (!enabled.includes(provider)) redirect('/login?error=oauth');
+
+  const next = safeNext(formData.get('next'));
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider,
+    options: {
+      redirectTo: `${await origin()}/auth/confirm?next=${encodeURIComponent(next)}`,
+    },
+  });
+
+  if (error || !data.url) redirect('/login?error=oauth');
+  redirect(data.url);
 }
 
 /** Выход. Отдельным действием, потому что cookie чистит сервер. */

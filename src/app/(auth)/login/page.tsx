@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { LoginForm } from './form';
+import { OAuthButtons } from '../oauth';
 import { FormError } from '@/components/form';
 
 export const metadata: Metadata = { title: 'Вход — ReleasePilot AI' };
@@ -23,7 +24,14 @@ export default async function LoginPage({ searchParams }: PageProps<'/login'>) {
         </div>
       ) : null}
 
+      {params.error === 'oauth' ? (
+        <div className="mb-4">
+          <FormError message="Не удалось войти через внешний сервис. Попробуйте ещё раз или войдите по почте." />
+        </div>
+      ) : null}
+
       <LoginForm next={next} />
+      <OAuthButtons next={next} />
 
       <p className="mt-6 text-center text-sm opacity-70">
         Нет аккаунта?{' '}

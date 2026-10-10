@@ -38,7 +38,18 @@ export async function GET(request: NextRequest) {
     if (!error) return NextResponse.redirect(`${origin}/onboarding`);
   } else if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) return NextResponse.redirect(`${origin}/onboarding`);
+    /*
+      Вход через OAuth возвращается сюда же и приносит `next` — куда
+      человек шёл до входа. Пропускаются только внутренние пути: значение
+      пришло из адреса, и «//чужой-сайт» превратил бы вход в трамплин для
+      фишинга (та же проверка, что в действиях входа). Без `next` — в
+      онбординг, как и раньше: он сам отправит дальше, если организация есть.
+    */
+    if (!error) {
+      const next = searchParams.get('next');
+      const safe = next && next.startsWith('/') && !next.startsWith('//') ? next : '/onboarding';
+      return NextResponse.redirect(`${origin}${safe}`);
+    }
   }
 
   // Ссылка просрочена, уже использована или подделана. Разницу

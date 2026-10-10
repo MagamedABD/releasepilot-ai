@@ -5,12 +5,14 @@ import {
   AbsencesSection,
   ImportSection,
   TeamsSection,
+  TrackerImportSection,
   type SettingsAbsence,
   type SettingsTeam,
 } from '@/components/settings';
 import { RISK_CONFIG } from '@/domain/config';
 import { netCapacity } from '@/domain/capacity';
 import { canManage, loadRole } from '@/lib/data/role';
+import { isCorporate } from '@/lib/env.server';
 import { createClient } from '@/lib/supabase/server';
 
 export const metadata = { title: 'Настройки — ReleasePilot AI' };
@@ -122,6 +124,11 @@ export default async function SettingsPage({ params, searchParams }: PageProps<'
   }));
 
   const editable = canManage(role);
+  const canImport = role !== null && IMPORTERS.has(role);
+  const projectOptions = (projectsRes.data ?? []).map((p) => ({
+    value: p.id,
+    label: `${p.key} · ${p.name}`,
+  }));
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-4 py-8 sm:py-10">
@@ -161,10 +168,22 @@ export default async function SettingsPage({ params, searchParams }: PageProps<'
       ) : tab === 'absences' ? (
         <AbsencesSection orgId={org.id} absences={absences} people={people} canEdit={editable} />
       ) : (
-        <ImportSection
-          projects={(projectsRes.data ?? []).map((p) => ({ value: p.id, label: `${p.key} · ${p.name}` }))}
-          canImport={role !== null && IMPORTERS.has(role)}
-        />
+        <div className="flex flex-col gap-8">
+          <section className="flex flex-col gap-3">
+            <h2 className="text-sm font-medium uppercase tracking-wide opacity-50">Из файла</h2>
+            <ImportSection projects={projectOptions} canImport={canImport} />
+          </section>
+          <section className="flex flex-col gap-3">
+            <h2 className="text-sm font-medium uppercase tracking-wide opacity-50">
+              Из Yandex Tracker
+            </h2>
+            <TrackerImportSection
+              projects={projectOptions}
+              canImport={canImport}
+              available={isCorporate}
+            />
+          </section>
+        </div>
       )}
     </div>
   );

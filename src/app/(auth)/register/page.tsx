@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { RegisterForm } from './form';
+import { OAuthButtons } from '../oauth';
 
 export const metadata: Metadata = { title: 'Регистрация — ReleasePilot AI' };
 
@@ -12,6 +13,7 @@ export default function RegisterPage() {
       <p className="mb-6 text-sm opacity-60">Минута — и можно заводить первый релиз</p>
 
       <RegisterForm />
+      <OAuthButtons />
 
       <p className="mt-6 text-center text-sm opacity-70">
         Уже есть аккаунт?{' '}

@@ -19,6 +19,23 @@ const schema = z.object({
     .string()
     .min(20, 'ключ выглядит обрезанным — проверьте, что скопирован целиком'),
   NEXT_PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
+  /**
+   * Провайдеры входа через OAuth (FR-01), через запятую: `google,github`.
+   *
+   * Кнопка показывается только для перечисленных. Включить провайдера в
+   * Supabase и забыть про эту переменную безвредно — кнопки просто не
+   * будет; а вот кнопка без включённого провайдера вела бы на страницу
+   * ошибки Supabase, поэтому по умолчанию список пуст.
+   */
+  NEXT_PUBLIC_OAUTH_PROVIDERS: z
+    .string()
+    .default('')
+    .transform((v) =>
+      v
+        .split(',')
+        .map((p) => p.trim().toLowerCase())
+        .filter((p): p is 'google' | 'github' => p === 'google' || p === 'github'),
+    ),
 });
 
 // Обращение строго по литеральным именам: Next подставляет значения
@@ -28,6 +45,7 @@ const parsed = schema.safeParse({
   NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+  NEXT_PUBLIC_OAUTH_PROVIDERS: process.env.NEXT_PUBLIC_OAUTH_PROVIDERS,
 });
 
 if (!parsed.success) {

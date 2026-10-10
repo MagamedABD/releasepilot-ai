@@ -640,49 +640,166 @@ export function ImportSection({ projects, canImport }: { projects: Option[]; can
 
       <FormError message={error} />
 
-      {report ? (
-        <section className="flex flex-col gap-3 rounded-2xl border border-black/10 p-4 dark:border-white/15">
-          {report.dryRun ? (
-            <p className="text-sm font-medium">Проверка: {STATUS_TEXT[report.status]}. В базу ничего не записано.</p>
-          ) : (
-            <FormNotice message={`Импорт выполнен: ${STATUS_TEXT[report.status]}.`} />
-          )}
-          <dl className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
-            {Object.entries(report.stats).map(([k, v]) => (
-              <div key={k}>
-                <dt className="opacity-60">
-                  {report.dryRun && (k === 'created' || k === 'updated')
-                    ? `будет ${STAT_LABEL[k]}`
-                    : (STAT_LABEL[k] ?? k)}
-                </dt>
-                <dd className="text-lg font-semibold tabular-nums">{v}</dd>
-              </div>
-            ))}
-          </dl>
-          {report.errors.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs uppercase tracking-wide opacity-50">
-                    <th className="py-1 pr-4 font-medium">Строка</th>
-                    <th className="py-1 pr-4 font-medium">Колонка</th>
-                    <th className="py-1 font-medium">Что не так</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.errors.map((e, i) => (
-                    <tr key={i} className="border-t border-black/5 dark:border-white/10">
-                      <td className="py-1.5 pr-4 tabular-nums">{e.line}</td>
-                      <td className="py-1.5 pr-4 font-mono text-xs">{e.field ?? '—'}</td>
-                      <td className="py-1.5">{e.message}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
-        </section>
+      {report ? <ImportReportView report={report} /> : null}
+    </div>
+  );
+}
+
+function ImportReportView({ report }: { report: ImportReport }) {
+  return (
+    <section className="flex flex-col gap-3 rounded-2xl border border-black/10 p-4 dark:border-white/15">
+      {report.dryRun ? (
+        <p className="text-sm font-medium">Проверка: {STATUS_TEXT[report.status]}. В базу ничего не записано.</p>
+      ) : (
+        <FormNotice message={`Импорт выполнен: ${STATUS_TEXT[report.status]}.`} />
+      )}
+      <dl className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+        {Object.entries(report.stats).map(([k, v]) => (
+          <div key={k}>
+            <dt className="opacity-60">
+              {report.dryRun && (k === 'created' || k === 'updated')
+                ? `будет ${STAT_LABEL[k]}`
+                : (STAT_LABEL[k] ?? k)}
+            </dt>
+            <dd className="text-lg font-semibold tabular-nums">{v}</dd>
+          </div>
+        ))}
+      </dl>
+      {report.errors.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wide opacity-50">
+                <th className="py-1 pr-4 font-medium">Строка</th>
+                <th className="py-1 pr-4 font-medium">Колонка</th>
+                <th className="py-1 font-medium">Что не так</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.errors.map((e, i) => (
+                <tr key={i} className="border-t border-black/5 dark:border-white/10">
+                  <td className="py-1.5 pr-4 tabular-nums">{e.line}</td>
+                  <td className="py-1.5 pr-4 font-mono text-xs">{e.field ?? '—'}</td>
+                  <td className="py-1.5">{e.message}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : null}
+    </section>
+  );
+}
+
+/**
+ * Импорт из Yandex Tracker (FR-40).
+ *
+ * Доступен только в корпоративном режиме (ADR-002): публичное демо
+ * работает на синтетических данных и корпоративного источника не
+ * касается. В демо форма не прячется молча, а объясняет, почему её нет, —
+ * иначе на защите вопрос «а где импорт из трекера» остался бы без ответа
+ * на экране.
+ *
+ * Анонимизация включена по умолчанию и снимается осознанно: заголовки
+ * задач — корпоративные данные, и по умолчанию наружу они не выходят
+ * (FR-42).
+ */
+export function TrackerImportSection({
+  projects,
+  canImport,
+  available,
+}: {
+  projects: Option[];
+  canImport: boolean;
+  available: boolean;
+}) {
+  const router = useRouter();
+  const hydrated = useHydrated();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string>();
+  const [report, setReport] = useState<ImportReport>();
+
+  if (!available) {
+    return (
+      <p className="rounded-2xl border border-dashed border-black/15 p-4 text-sm opacity-70 dark:border-white/20">
+        Импорт из Yandex Tracker работает только в корпоративном режиме (APP_MODE=corporate).
+        Публичное демо работает на синтетических данных и к корпоративному трекеру не обращается.
+      </p>
+    );
+  }
+  if (projects.length === 0) return null;
+
+  async function send(form: HTMLFormElement, dryRun: boolean) {
+    const fd = new FormData(form);
+    const releaseName = String(fd.get('releaseName') ?? '').trim();
+    setPending(true);
+    setError(undefined);
+    const res = await callApi<ImportReport>('POST', '/api/import/tracker', {
+      projectId: String(fd.get('projectId') ?? ''),
+      queue: String(fd.get('queue') ?? '').trim().toUpperCase(),
+      releaseName: releaseName || null,
+      anonymize: fd.get('anonymize') === 'on',
+      dryRun,
+    });
+    setPending(false);
+    if (!res.ok) {
+      setError(Object.values(res.fields).flat()[0] ?? res.message);
+      setReport(undefined);
+      return;
+    }
+    setReport(res.data);
+    if (!dryRun) router.refresh();
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          send(e.currentTarget, true);
+        }}
+        className="flex flex-col gap-3 rounded-2xl border border-black/10 p-4 dark:border-white/15"
+      >
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <select name="projectId" aria-label="Проект" className={INPUT}>
+            {projects.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <input name="queue" placeholder="Очередь, например PPT" aria-label="Очередь трекера" className={`${INPUT} sm:w-48`} />
+          <input name="releaseName" placeholder="Релиз (необязательно)" aria-label="Релиз" className={`${INPUT} min-w-0 flex-1`} />
+        </div>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" name="anonymize" defaultChecked className="mt-0.5 size-4 accent-blue-600" />
+          <span>
+            Анонимизировать имена и заголовки
+            <span className="block opacity-60">
+              Заголовки задач заменяются обезличенными. Снимайте, только если данные можно хранить здесь.
+            </span>
+          </span>
+        </label>
+        <div className="flex flex-wrap gap-2">
+          <button type="submit" disabled={pending || !hydrated} className={BUTTON}>
+            {pending ? 'Проверяем…' : 'Проверить'}
+          </button>
+          {report?.dryRun && report.status !== 'failed' ? (
+            <button
+              type="button"
+              disabled={pending || !canImport}
+              title={canImport ? undefined : 'Импорт доступен администратору и владельцу'}
+              onClick={(e) => send(e.currentTarget.form!, false)}
+              className={PRIMARY}
+            >
+              Импортировать
+            </button>
+          ) : null}
+        </div>
+      </form>
+
+      <FormError message={error} />
+      {report ? <ImportReportView report={report} /> : null}
     </div>
   );
 }
