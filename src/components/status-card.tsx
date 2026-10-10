@@ -10,8 +10,34 @@
 
 import { useState } from 'react';
 
-export function StatusCard({ lines }: { lines: string[] }) {
+import { callApi } from '@/lib/ui/api';
+
+export function StatusCard({
+  lines,
+  releaseId,
+  emailEnabled,
+}: {
+  lines: string[];
+  releaseId: string;
+  /** Настроена ли почта на сервере: без неё кнопка только обещала бы. */
+  emailEnabled: boolean;
+}) {
   const [copied, setCopied] = useState(false);
+  const [mail, setMail] = useState<{ state: 'idle' | 'sending' | 'sent' | 'failed'; text?: string }>({
+    state: 'idle',
+  });
+
+  // Письмо уходит на адрес самой учётной записи — сервер не принимает
+  // получателя из запроса (FR-43).
+  async function send() {
+    setMail({ state: 'sending' });
+    const res = await callApi<{ sentTo: string }>('POST', `/api/releases/${releaseId}/digest`);
+    setMail(
+      res.ok
+        ? { state: 'sent', text: `Отправлено на ${res.data.sentTo}` }
+        : { state: 'failed', text: res.message },
+    );
+  }
 
   async function copy() {
     try {
@@ -36,7 +62,7 @@ export function StatusCard({ lines }: { lines: string[] }) {
             <li key={i}>{l}</li>
           ))}
         </ul>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={copy}
@@ -44,10 +70,32 @@ export function StatusCard({ lines }: { lines: string[] }) {
           >
             {copied ? 'Скопировано' : 'Скопировать'}
           </button>
+          {emailEnabled ? (
+            <button
+              type="button"
+              onClick={send}
+              disabled={mail.state === 'sending'}
+              className="rounded-lg border border-black/15 px-3 py-1.5 text-sm transition hover:bg-black/5 disabled:opacity-50 dark:border-white/20 dark:hover:bg-white/10"
+            >
+              {mail.state === 'sending' ? 'Отправляем…' : 'Отправить себе на почту'}
+            </button>
+          ) : null}
           <span className="text-xs opacity-50">
             Числа — из того же расчёта, что в кокпите; текст собран без модели.
           </span>
         </div>
+        {mail.text ? (
+          <p
+            role="status"
+            className={`text-sm ${mail.state === 'failed' ? 'text-red-700 dark:text-red-300' : 'opacity-70'}`}
+          >
+            {mail.text}
+          </p>
+        ) : !emailEnabled ? (
+          <p className="text-xs opacity-50">
+            Рассылка на почту не настроена: на сервере не заданы RESEND_API_KEY и DIGEST_FROM_EMAIL.
+          </p>
+        ) : null}
       </div>
     </details>
   );

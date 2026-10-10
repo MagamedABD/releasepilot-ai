@@ -5,8 +5,10 @@ import { PlannedDate, Readiness, RiskBadge, Stat } from '@/components/cockpit';
 import { ADD_BUTTON } from '@/components/editor';
 import { ReleaseEditor } from '@/components/release-editor';
 import { EmptyState } from '@/components/states';
+import { loadPreviousRiskByRelease } from '@/lib/data/risk-change';
 import { canManage, loadRole } from '@/lib/data/role';
 import { loadOrgReleases, type ReleaseWithMetrics } from '@/lib/data/snapshot';
+import { riskRose } from '@/lib/notify/alerts';
 import { createClient } from '@/lib/supabase/server';
 import { byUrgency } from '@/lib/ui/releases';
 import { RELEASE_STATUS, reasonText } from '@/lib/ui/risk';
@@ -35,9 +37,10 @@ export default async function ReleasesPage({ params, searchParams }: PageProps<'
 
   if (!org) notFound();
 
-  const [all, role, projectsRes] = await Promise.all([
+  const [all, role, previousRisk, projectsRes] = await Promise.all([
     loadOrgReleases(supabase, org.id),
     loadRole(supabase, org.id),
+    loadPreviousRiskByRelease(supabase, org.id),
     supabase.from('projects').select('id, name, key').eq('org_id', org.id).order('name'),
   ]);
   const releases = all.sort(byUrgency);
@@ -85,7 +88,11 @@ export default async function ReleasesPage({ params, searchParams }: PageProps<'
         <ul className="grid gap-4">
           {releases.map((r) => (
             <li key={r.id} className="min-w-0">
-              <ReleaseCard slug={slug} release={r} />
+              <ReleaseCard
+                slug={slug}
+                release={r}
+                rose={riskRose(previousRisk.get(r.id)?.level ?? null, r.metrics.riskLevel)}
+              />
             </li>
           ))}
         </ul>
@@ -106,7 +113,16 @@ export default async function ReleasesPage({ params, searchParams }: PageProps<'
   );
 }
 
-function ReleaseCard({ slug, release }: { slug: string; release: ReleaseWithMetrics }) {
+function ReleaseCard({
+  slug,
+  release,
+  rose,
+}: {
+  slug: string;
+  release: ReleaseWithMetrics;
+  /** Уровень риска выше, чем во вчерашнем снимке (FR-44). */
+  rose: boolean;
+}) {
   const m = release.metrics;
   const done = release.status === 'released' || release.status === 'cancelled';
   // Главная причина — та, что даёт наибольший вклад. Движок уже отсортировал.
@@ -136,7 +152,14 @@ function ReleaseCard({ slug, release }: { slug: string; release: ReleaseWithMetr
             {RELEASE_STATUS[release.status]}
           </span>
         ) : (
-          <RiskBadge level={m.riskLevel} score={m.riskScore} />
+          <span className="flex flex-col items-end gap-1">
+            <RiskBadge level={m.riskLevel} score={m.riskScore} />
+            {rose ? (
+              <span className="text-xs font-medium text-red-700 dark:text-red-300">
+                ↑ вырос со вчера
+              </span>
+            ) : null}
+          </span>
         )}
       </div>
 

@@ -58,6 +58,14 @@ const schema = z.object({
    */
   TRACKER_OAUTH_TOKEN: z.string().optional(),
   TRACKER_ORG_ID: z.string().optional(),
+  /**
+   * Почта (FR-43, FR-44). Необязательны: без них письма не уходят, а
+   * уведомление о росте риска остаётся плашкой в кокпите. Отправитель —
+   * адрес на домене, подтверждённом в Resend; иначе сервис отвергнет
+   * письмо. Форма «Имя <адрес>» допустима, поэтому это строка, а не email.
+   */
+  RESEND_API_KEY: z.string().optional(),
+  DIGEST_FROM_EMAIL: z.string().optional(),
 });
 
 /**
@@ -82,6 +90,8 @@ const parsed = schema.safeParse({
   CRON_SECRET: unset(process.env.CRON_SECRET),
   TRACKER_OAUTH_TOKEN: unset(process.env.TRACKER_OAUTH_TOKEN),
   TRACKER_ORG_ID: unset(process.env.TRACKER_ORG_ID),
+  RESEND_API_KEY: unset(process.env.RESEND_API_KEY),
+  DIGEST_FROM_EMAIL: unset(process.env.DIGEST_FROM_EMAIL),
 });
 
 if (!parsed.success) {

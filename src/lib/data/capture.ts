@@ -125,9 +125,29 @@ export type CaptureReport = {
  * ни одного параметра, приходящего из запроса: перечень организаций она
  * берёт сама, и подменить его извне нельзя.
  */
+/**
+ * Что посчитано по организации за один прогон — для уведомлений.
+ *
+ * Отдаётся обратным вызовом, а не в отчёте: отчёт уходит ответом
+ * планировщику, и класть в него метрики всех релизов незачем. Прошлый
+ * уровень читается до записи нового снимка — после неё «прошлым» стал бы
+ * только что записанный.
+ */
+export type OrgCapture = {
+  orgId: string;
+  releases: {
+    release: ReleaseWithMetrics;
+    metrics: ReleaseMetrics;
+    forecast: ReleaseForecast;
+    /** Уровень из предыдущего снимка; `null` — снимков ещё не было. */
+    previousLevel: ReleaseMetrics['riskLevel'] | null;
+  }[];
+};
+
 export async function captureSnapshots(
   admin: Client,
   capturedAt: string = new Date().toISOString(),
+  onOrg?: (capture: OrgCapture) => void,
 ): Promise<CaptureReport> {
   const report: CaptureReport = {
     organizations: 0,
@@ -168,6 +188,7 @@ export async function captureSnapshots(
     const completedReleases = releases.filter((r) => r.status === 'released').length;
 
     const rows: SnapshotInsert[] = [];
+    const evaluated: Omit<OrgCapture['releases'][number], 'previousLevel'>[] = [];
     for (const release of releases) {
       report.releases += 1;
       if (!isSnapshotWorthy(release.status)) {
@@ -176,9 +197,25 @@ export async function captureSnapshots(
       }
       const { metrics, forecast } = evaluateForSnapshot(release, completedReleases);
       rows.push(toSnapshotRow(release, metrics, forecast, capturedAt));
+      evaluated.push({ release, metrics, forecast });
     }
 
     if (rows.length === 0) continue;
+
+    // Последний снимок каждого релиза — пока новый ещё не записан.
+    const previous = new Map<string, ReleaseMetrics['riskLevel']>();
+    if (onOrg) {
+      const { data: last } = await admin
+        .from('release_snapshots')
+        .select('release_id, risk_level')
+        .eq('org_id', org.id)
+        .in('release_id', evaluated.map((e) => e.release.id))
+        .order('captured_at', { ascending: false })
+        .limit(500);
+      for (const row of last ?? []) {
+        if (!previous.has(row.release_id)) previous.set(row.release_id, row.risk_level);
+      }
+    }
 
     const { error: writeError } = await admin.from('release_snapshots').insert(rows);
     if (writeError) {
@@ -186,6 +223,14 @@ export async function captureSnapshots(
       continue;
     }
     report.written += rows.length;
+
+    onOrg?.({
+      orgId: org.id,
+      releases: evaluated.map((e) => ({
+        ...e,
+        previousLevel: previous.get(e.release.id) ?? null,
+      })),
+    });
   }
 
   return report;

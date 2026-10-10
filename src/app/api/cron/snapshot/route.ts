@@ -17,7 +17,8 @@
 import { timingSafeEqual } from 'node:crypto';
 
 import { fail, ok } from '@/lib/api/http';
-import { captureSnapshots } from '@/lib/data/capture';
+import { captureSnapshots, type OrgCapture } from '@/lib/data/capture';
+import { dispatchNotifications } from '@/lib/notify/dispatch';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { serverEnv } from '@/lib/env.server';
 
@@ -57,7 +58,19 @@ export async function GET(request: Request) {
     return fail(401, 'unauthorized', 'Нужна авторизация планировщика');
   }
 
-  const report = await captureSnapshots(createAdminClient());
+  const admin = createAdminClient();
+  const captures: OrgCapture[] = [];
+  const report = await captureSnapshots(admin, undefined, (c) => captures.push(c));
+
+  /*
+    Письма — после снимков и отдельно от них: сбой почтового сервиса не
+    должен стоить дня истории. Без ключа рассылка просто не настроена, и
+    это видно в ответе, а не только по отсутствию писем.
+  */
+  const notifications = await dispatchNotifications(admin, captures);
+  if (notifications.errors.length > 0) {
+    console.error(`[cron/snapshot] письма: ${notifications.errors.join(' | ')}`);
+  }
 
   /*
     Ошибки отдельных организаций не делают запуск неуспешным: снимок
@@ -69,5 +82,5 @@ export async function GET(request: Request) {
     console.error(`[cron/snapshot] ошибки: ${report.errors.join(' | ')}`);
   }
 
-  return ok(report);
+  return ok({ ...report, notifications });
 }

@@ -7,6 +7,7 @@ import { RISK_CONFIG } from '@/domain/config';
 import { forecastRelease } from '@/domain/forecast';
 import { calculateRelease } from '@/domain/risk';
 import { loadReleaseContext } from '@/lib/data/context';
+import { emailConfigured } from '@/lib/notify/send';
 import { createClient } from '@/lib/supabase/server';
 import { hours } from '@/lib/ui/risk';
 import { probabilityText } from '@/lib/ui/scenario';
@@ -68,6 +69,8 @@ export default async function AssistantPage({
       </div>
 
       <StatusCard
+        releaseId={id}
+        emailEnabled={emailConfigured()}
         lines={executiveStatus({
           name: release.name,
           plannedDate: release.planned_date,

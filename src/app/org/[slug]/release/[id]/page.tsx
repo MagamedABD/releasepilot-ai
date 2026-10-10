@@ -5,8 +5,10 @@ import { PlannedDate, Readiness, RiskBadge, Stat, TeamLoadBars } from '@/compone
 import { ReleaseEditor } from '@/components/release-editor';
 import { tasksAtRisk, type AtRiskTask } from '@/domain/at-risk';
 import { calculateRelease } from '@/domain/risk';
+import { loadPreviousRisk } from '@/lib/data/risk-change';
 import { canManage, loadRole } from '@/lib/data/role';
 import { loadReleaseSnapshot } from '@/lib/data/snapshot';
+import { riskRose } from '@/lib/notify/alerts';
 import { createClient } from '@/lib/supabase/server';
 import { RELEASE_STATUS, RISK_LEVEL, atRiskReasonText, days, hours, plural, reasonHref, reasonText, reasonWeight } from '@/lib/ui/risk';
 import type { Task } from '@/domain/types';
@@ -37,13 +39,14 @@ export default async function ReleasePage({
 
   // Строка релиза и снимок независимы — берём разом. Снимок не содержит
   // статуса и проекта: движку они не нужны, а экрану нужны.
-  const [releaseRes, snapshot] = await Promise.all([
+  const [releaseRes, snapshot, previousRisk] = await Promise.all([
     supabase
       .from('releases')
       .select('id, org_id, name, status, planned_date, released_at, projects(key), organizations(slug)')
       .eq('id', id)
       .maybeSingle(),
     loadReleaseSnapshot(supabase, id),
+    loadPreviousRisk(supabase, id),
   ]);
 
   const release = releaseRes.data;
@@ -115,6 +118,25 @@ export default async function ReleasePage({
           </div>
         </header>
       </div>
+
+      {/*
+        Уведомление о росте риска (FR-44) — в интерфейсе, а не только
+        письмом: письмо может быть не настроено или не прочитано, а
+        человек, открывший кокпит, должен увидеть, что со вчера стало хуже.
+      */}
+      {!done && previousRisk && riskRose(previousRisk.level, m.riskLevel) ? (
+        <p
+          role="status"
+          className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-800 dark:text-red-200"
+        >
+          <span className="font-medium">
+            Риск вырос: {RISK_LEVEL[previousRisk.level].label} → {RISK_LEVEL[m.riskLevel].label}.
+          </span>{' '}
+          По снимку от {previousRisk.capturedAt.slice(0, 10)} скор был{' '}
+          {previousRisk.score.toFixed(1)}, сейчас {m.riskScore.toFixed(1)}. Что изменилось — в
+          причинах ниже.
+        </p>
+      ) : null}
 
       {/*
         Готовность и трудозатраты рядом. Проценты без часов позволяют
