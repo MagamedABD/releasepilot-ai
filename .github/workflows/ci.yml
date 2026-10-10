@@ -45,6 +45,13 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: https://example-ci.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key-not-a-real-secret
       NEXT_PUBLIC_APP_URL: http://localhost:3000
+      # Серверный ключ — тоже заглушка, по той же причине. Сборка собирает
+      # данные маршрутов и при этом исполняет их модули, а
+      # src/lib/env.server.ts падает без ключа: так задумано, но в CI
+      # означало красную сборку на каждом коммите с момента появления
+      # административного клиента (задача снимков). Длина не меньше 20
+      # знаков — этого требует схема; к базе с ним никто не обращается.
+      SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role-key-not-a-real-secret
 
     steps:
       - name: Получить код
