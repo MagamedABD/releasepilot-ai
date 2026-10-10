@@ -10,7 +10,7 @@
 
 import type { PostgrestError, SupabaseClient } from '@supabase/supabase-js';
 
-import type { ReleaseFact } from '@/domain/analytics';
+import type { ReasonObservation, ReleaseFact } from '@/domain/analytics';
 import type { Database } from '@/lib/database.types';
 
 type Client = SupabaseClient<Database>;
@@ -104,4 +104,47 @@ export async function loadSnapshotCoverage(
     },
     error: null,
   };
+}
+
+/** Потолок выборки: год ежедневных снимков по десятку релизов. */
+const MAX_OBSERVATIONS = 4000;
+
+/**
+ * Причины риска по дням — сырьё для ранжирования (FR-37).
+ *
+ * Из снимка берётся только список причин, а не весь `metrics`: полный
+ * снимок весит килобайты, а нужны из него код и имя команды. Содержимое
+ * разбирается с недоверием — это jsonb, записанный прошлыми версиями
+ * расчёта, и форма у старых снимков может отличаться; непонятная запись
+ * пропускается, а не роняет экран.
+ */
+export async function loadReasonObservations(
+  supabase: Client,
+  orgId: string,
+): Promise<{ observations: ReasonObservation[]; error: PostgrestError | null }> {
+  const { data, error } = await supabase
+    .from('release_snapshots')
+    .select('release_id, reasons:metrics->reasons')
+    .eq('org_id', orgId)
+    .order('captured_at', { ascending: false })
+    .limit(MAX_OBSERVATIONS);
+
+  if (error) return { observations: [], error };
+
+  const observations: ReasonObservation[] = (data ?? []).map((row) => {
+    const reasons = Array.isArray(row.reasons) ? row.reasons : [];
+    const codes: string[] = [];
+    const teams: string[] = [];
+    for (const r of reasons) {
+      if (!r || typeof r !== 'object' || Array.isArray(r)) continue;
+      const { code, facts } = r as { code?: unknown; facts?: unknown };
+      if (typeof code !== 'string') continue;
+      codes.push(code);
+      const team = (facts as { team?: unknown } | null)?.team;
+      if (typeof team === 'string' && code.startsWith('TEAM_OVERLOAD')) teams.push(team);
+    }
+    return { releaseId: row.release_id, codes, teams };
+  });
+
+  return { observations, error: null };
 }

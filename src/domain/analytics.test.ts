@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { deliveryHistory, type ReleaseFact } from './analytics';
+import { deliveryHistory, recurringCauses, type ReleaseFact } from './analytics';
 
 const fact = (over: Partial<ReleaseFact> = {}): ReleaseFact => ({
   releaseId: 'r1',
@@ -106,5 +106,71 @@ describe('динамика (FR-38)', () => {
       fact({ releaseId: 'early', plannedDate: '2026-08-10', releasedAt: '2026-08-11T10:00:00.000Z' }),
     ]);
     expect(h.records.map((r) => r.releaseId)).toEqual(['early', 'late']);
+  });
+});
+
+describe('recurringCauses', () => {
+  const day = (releaseId: string, codes: string[], teams: string[] = []) => ({
+    releaseId,
+    codes,
+    teams,
+  });
+
+  it('ранжирует по числу релизов, а не дней', () => {
+    const r = recurringCauses(
+      [
+        // BLOCKERS стоит долго, но в одном релизе.
+        day('a', ['BLOCKERS']),
+        day('a', ['BLOCKERS']),
+        day('a', ['BLOCKERS']),
+        // QA_FUNNEL — по дню в двух релизах.
+        day('a', ['QA_FUNNEL']),
+        day('b', ['QA_FUNNEL']),
+      ],
+      new Set(),
+    );
+    expect(r.causes.map((c) => c.code)).toEqual(['QA_FUNNEL', 'BLOCKERS']);
+    expect(r.causes[0]).toMatchObject({ releases: 2, days: 2 });
+    expect(r.causes[1]).toMatchObject({ releases: 1, days: 3 });
+    expect(r.releases).toBe(2);
+  });
+
+  it('при равном числе релизов выше та, что держалась дольше', () => {
+    const r = recurringCauses(
+      [day('a', ['TIME_DEFICIT', 'SCOPE_DRIFT']), day('a', ['TIME_DEFICIT'])],
+      new Set(),
+    );
+    expect(r.causes.map((c) => c.code)).toEqual(['TIME_DEFICIT', 'SCOPE_DRIFT']);
+  });
+
+  it('считает, в скольких релизах причина кончилась опозданием', () => {
+    const r = recurringCauses(
+      [day('late', ['BLOCKERS']), day('ok', ['BLOCKERS']), day('open', ['BLOCKERS'])],
+      new Set(['late']),
+    );
+    expect(r.causes[0]).toMatchObject({ releases: 3, lateReleases: 1 });
+  });
+
+  it('повтор кода в одном снимке — один день', () => {
+    const r = recurringCauses([day('a', ['TEAM_OVERLOAD', 'TEAM_OVERLOAD'])], new Set());
+    expect(r.causes[0].days).toBe(1);
+  });
+
+  it('хронические узкие места — команды, перегруженные в нескольких релизах', () => {
+    const r = recurringCauses(
+      [
+        day('a', ['TEAM_OVERLOAD'], ['Тестирование']),
+        day('b', ['TEAM_OVERLOAD'], ['Тестирование', 'Бэкенд']),
+      ],
+      new Set(),
+    );
+    expect(r.bottlenecks).toEqual([
+      { team: 'Тестирование', releases: 2, days: 2 },
+      { team: 'Бэкенд', releases: 1, days: 1 },
+    ]);
+  });
+
+  it('без снимков — пусто, а не выдуманная история', () => {
+    expect(recurringCauses([], new Set())).toEqual({ releases: 0, causes: [], bottlenecks: [] });
   });
 });

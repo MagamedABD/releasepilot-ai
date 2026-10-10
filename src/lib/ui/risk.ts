@@ -132,6 +132,25 @@ export function hours(n: number): string {
 }
 
 /**
+ * Название причины без чисел — для сводок, где причина одна, а релизов
+ * много (FR-37). `reasonText` здесь не годится: он называет величину
+ * конкретного дня, а в сводке стоит сама причина.
+ */
+export const REASON_LABEL: Record<string, string> = {
+  TIME_DEFICIT: 'Работ больше, чем времени до даты',
+  TEAM_OVERLOAD: 'Перегруз команды',
+  BLOCKERS: 'Заблокированные задачи',
+  CRITICAL_CHAIN: 'Длинная цепочка зависимостей',
+  QA_FUNNEL: 'Тестированию не хватает ёмкости',
+  SCOPE_DRIFT: 'Объём вырос после старта',
+  CRITICAL_BLOCKER: 'Заблокирована задача P0',
+  MULTIPLE_P1_BLOCKED: 'Заблокировано несколько задач P1',
+  CHAIN_EXCEEDS_TIME: 'Цепочка зависимостей длиннее остатка времени',
+  TEAM_OVERLOAD_RULE: 'Перегруз команды выше порога',
+  LOW_PROBABILITY: 'Низкая вероятность выпуска в срок',
+};
+
+/**
  * Фраза о причине риска.
  *
  * Каждая формулировка называет величину, а не только факт: «заблокирована
@@ -242,4 +261,38 @@ export function reasonHref(reason: RiskReason, slug: string, releaseId: string):
   }
 
   return `/org/${slug}/tasks?${params.toString()}`;
+}
+
+/**
+ * Почему задача под угрозой — одной фразой (FR-27).
+ *
+ * Как и у причин релиза, фраза называет величину: «заблокирована 18 дней»
+ * говорит, насколько плохо, а «заблокирована» — только что плохо.
+ */
+export function atRiskReasonText(reason: {
+  code: string;
+  facts: Record<string, number | string | boolean>;
+}): string {
+  const f = reason.facts;
+  switch (reason.code) {
+    case 'BLOCKED':
+      return `заблокирована ${days(num(f.days))}${f.stale ? ', блокер застарел' : ''}`;
+    case 'BLOCKS_OTHERS': {
+      const n = num(f.count);
+      return `её ${plural(n, 'ждёт', 'ждут', 'ждут')} ${n} ${plural(n, 'задача', 'задачи', 'задач')}`;
+    }
+    case 'CRITICAL_CHAIN':
+      return `на критической цепочке (${days(num(f.days))})`;
+    case 'NOT_STARTED':
+      return `${f.priority} ещё не начата`;
+    case 'TEAM_OVERLOADED':
+      // −1 — условная отметка бесконечной загрузки: ёмкости до даты нет.
+      return num(f.load) < 0
+        ? `у команды «${f.team}» не осталось ёмкости`
+        : `команда «${f.team}» загружена на ${pct(num(f.load))}`;
+    case 'OVERSPENT':
+      return `потрачено ${hours(num(f.spentH))} при оценке ${hours(num(f.estimateH))}`;
+    default:
+      return reason.code;
+  }
 }

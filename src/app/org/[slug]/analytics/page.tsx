@@ -2,10 +2,20 @@ import { notFound } from 'next/navigation';
 
 import { Stat } from '@/components/cockpit';
 import { EmptyState } from '@/components/states';
-import { deliveryHistory, type DeliveryRecord } from '@/domain/analytics';
-import { loadReleaseFacts, loadSnapshotCoverage } from '@/lib/data/analytics';
+import {
+  deliveryHistory,
+  recurringCauses,
+  type DeliveryRecord,
+  type RecurringCauses,
+} from '@/domain/analytics';
+import {
+  loadReasonObservations,
+  loadReleaseFacts,
+  loadSnapshotCoverage,
+  type SnapshotCoverage,
+} from '@/lib/data/analytics';
 import { createClient } from '@/lib/supabase/server';
-import { days, plural } from '@/lib/ui/risk';
+import { REASON_LABEL, days, plural } from '@/lib/ui/risk';
 import { DIRECTION_TONE, direction, signed } from '@/lib/ui/scenario';
 
 export const metadata = { title: 'Аналитика — ReleasePilot AI' };
@@ -39,13 +49,16 @@ export default async function AnalyticsPage({ params }: PageProps<'/org/[slug]/a
   // (ADR-003): отказ подтверждал бы, что такой адрес занят.
   if (!org) notFound();
 
-  const [factsRes, coverageRes] = await Promise.all([
+  const [factsRes, coverageRes, observationsRes] = await Promise.all([
     loadReleaseFacts(supabase, org.id),
     loadSnapshotCoverage(supabase, org.id),
+    loadReasonObservations(supabase, org.id),
   ]);
 
   const history = deliveryHistory(factsRes.facts);
   const coverage = coverageRes.coverage;
+  const late = new Set(history.records.filter((r) => !r.onTime).map((r) => r.releaseId));
+  const recurring = recurringCauses(observationsRes.observations, late);
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-4 py-8 sm:py-10">
@@ -165,15 +178,89 @@ export default async function AnalyticsPage({ params }: PageProps<'/org/[slug]/a
               </p>
             </div>
           ) : (
-            <p className="text-sm opacity-60">
-              Снимков метрик: {coverage.count}
-              {coverage.from && coverage.to
-                ? ` · с ${coverage.from.slice(0, 10)} по ${coverage.to.slice(0, 10)}`
-                : ''}
-            </p>
+            <Recurring recurring={recurring} coverage={coverage} />
           )}
         </div>
       </section>
+    </div>
+  );
+}
+
+/**
+ * Повторяющиеся причины и хронические узкие места (FR-37).
+ *
+ * Рядом с числом релизов стоит число дней: «в трёх релизах» без «сколько
+ * держалось» не отличает разовый всплеск от постоянного состояния. Охват
+ * снимков показан здесь же — по двум неделям истории вывод слабее, чем по
+ * полугоду, и читатель должен видеть, на чём он стоит.
+ */
+function Recurring({
+  recurring,
+  coverage,
+}: {
+  recurring: RecurringCauses;
+  coverage: SnapshotCoverage;
+}) {
+  return (
+    <div className="flex flex-col gap-5">
+      {recurring.causes.length === 0 ? (
+        <p className="text-sm opacity-70">
+          За период снимков ни одна причина риска не превышала порог.
+        </p>
+      ) : (
+        <ol className="flex flex-col gap-2">
+          {recurring.causes.map((c, i) => (
+            <li
+              key={c.code}
+              className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 rounded-xl border border-black/10 px-4 py-3 dark:border-white/15"
+            >
+              <span className="min-w-0">
+                <span className="mr-2 tabular-nums opacity-40">{i + 1}.</span>
+                <span className="font-medium">{REASON_LABEL[c.code] ?? c.code}</span>
+              </span>
+              <span className="text-sm tabular-nums opacity-70">
+                {c.releases} из {recurring.releases}{' '}
+                {plural(recurring.releases, 'релиза', 'релизов', 'релизов')} · {days(c.days)}
+                {c.lateReleases > 0 ? (
+                  <span className="text-red-700 dark:text-red-300">
+                    {' '}
+                    · из них опоздало {c.lateReleases}
+                  </span>
+                ) : null}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {recurring.bottlenecks.length > 0 ? (
+        <div>
+          <h3 className="text-sm font-medium">Хронические узкие места</h3>
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {recurring.bottlenecks.map((b) => (
+              <li
+                key={b.team}
+                className="rounded-full border border-black/15 px-3 py-1 text-sm dark:border-white/20"
+              >
+                {b.team}
+                <span className="opacity-60">
+                  {' '}
+                  · {b.releases} {plural(b.releases, 'релиз', 'релиза', 'релизов')}, {days(b.days)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <p className="text-sm opacity-60">
+        По {coverage.count} {plural(coverage.count, 'снимку', 'снимкам', 'снимкам')} метрик
+        {coverage.from && coverage.to
+          ? ` с ${coverage.from.slice(0, 10)} по ${coverage.to.slice(0, 10)}`
+          : ''}
+        . Снимок пишется раз в день по каждому открытому релизу; «дни» — сколько снимков причина
+        стояла.
+      </p>
     </div>
   );
 }

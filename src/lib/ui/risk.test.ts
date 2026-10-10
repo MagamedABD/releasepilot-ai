@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { days, hours, plural, reasonHref, reasonText, RISK_LEVEL } from './risk';
+import { atRiskReasonText, days, hours, plural, reasonHref, reasonText, RISK_LEVEL } from './risk';
 import type { RiskReason } from '@/domain/types';
 import { taskQuerySchema } from '@/lib/validation/task';
 
@@ -201,5 +201,24 @@ describe('reasonHref', () => {
     for (const code of ['TIME_DEFICIT', 'CRITICAL_CHAIN', 'QA_FUNNEL', 'SCOPE_DRIFT', 'LOW_PROBABILITY'] as const) {
       expect(reasonHref(reason({ code }), SLUG, RELEASE)).toBeNull();
     }
+  });
+});
+
+describe('atRiskReasonText', () => {
+  it('называет величину у каждой причины', () => {
+    expect(atRiskReasonText({ code: 'BLOCKED', facts: { days: 18, stale: true } })).toBe(
+      'заблокирована 18 дней, блокер застарел',
+    );
+    expect(atRiskReasonText({ code: 'BLOCKS_OTHERS', facts: { count: 4 } })).toBe(
+      'её ждут 4 задачи',
+    );
+    expect(atRiskReasonText({ code: 'BLOCKS_OTHERS', facts: { count: 1 } })).toBe(
+      'её ждёт 1 задача',
+    );
+  });
+
+  it('бесконечная загрузка команды — словами', () => {
+    const text = atRiskReasonText({ code: 'TEAM_OVERLOADED', facts: { team: 'QA', load: -1 } });
+    expect(text).toBe('у команды «QA» не осталось ёмкости');
   });
 });

@@ -3,11 +3,12 @@ import { notFound } from 'next/navigation';
 
 import { PlannedDate, Readiness, RiskBadge, Stat, TeamLoadBars } from '@/components/cockpit';
 import { ReleaseEditor } from '@/components/release-editor';
+import { tasksAtRisk, type AtRiskTask } from '@/domain/at-risk';
 import { calculateRelease } from '@/domain/risk';
 import { canManage, loadRole } from '@/lib/data/role';
 import { loadReleaseSnapshot } from '@/lib/data/snapshot';
 import { createClient } from '@/lib/supabase/server';
-import { RELEASE_STATUS, RISK_LEVEL, days, hours, plural, reasonHref, reasonText, reasonWeight } from '@/lib/ui/risk';
+import { RELEASE_STATUS, RISK_LEVEL, atRiskReasonText, days, hours, plural, reasonHref, reasonText, reasonWeight } from '@/lib/ui/risk';
 import type { Task } from '@/domain/types';
 
 export const metadata = { title: 'Релиз — ReleasePilot AI' };
@@ -143,6 +144,11 @@ export default async function ReleasePage({
       {done ? null : (
         <>
           <Reasons metrics={m} slug={slug} releaseId={release.id} />
+          <AtRisk
+            tasks={tasksAtRisk(snapshot, m)}
+            byId={byId}
+            tasksHref={`/org/${slug}/tasks?releaseId=${release.id}`}
+          />
           <Blockers metrics={m} byId={byId} />
 
           <section>
@@ -259,6 +265,60 @@ function Reasons({
  * задача, стоящая неделю, требуют разных действий. Поэтому в строке —
  * дни, а не галочка (концепция интерфейса, экран 2).
  */
+/**
+ * Задачи, способные сорвать релиз (FR-27).
+ *
+ * Стоит сразу под причинами риска: причины говорят, что не так с релизом,
+ * этот список — за какие задачи браться. Каждая строка ведёт в карточку
+ * задачи: увидев «заблокирована 18 дней», человек хочет снять блокировку,
+ * а не искать задачу в общем списке.
+ */
+function AtRisk({
+  tasks,
+  byId,
+  tasksHref,
+}: {
+  tasks: AtRiskTask[];
+  byId: Map<string, Task>;
+  tasksHref: string;
+}) {
+  if (tasks.length === 0) return null;
+
+  return (
+    <section>
+      <h2 className="text-sm font-medium uppercase tracking-wide opacity-50">
+        Задачи под угрозой · {tasks.length}
+      </h2>
+      <ul className="mt-3 space-y-2">
+        {tasks.map((t) => {
+          const task = byId.get(t.taskId);
+          return (
+            <li key={t.taskId}>
+              <Link
+                href={`${tasksHref}&task=${t.taskId}`}
+                className="block rounded-xl border border-black/10 px-4 py-3 transition hover:border-black/25 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 dark:border-white/15 dark:hover:border-white/30"
+              >
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span className="rounded border border-black/15 px-1.5 py-0.5 text-xs font-medium dark:border-white/20">
+                    {task?.priority ?? '—'}
+                  </span>
+                  <span className="text-sm font-medium">{task?.key ?? '—'}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm opacity-70">
+                    {task?.title ?? 'Задача вне снимка'}
+                  </span>
+                </div>
+                <p className="mt-1.5 text-xs opacity-70">
+                  {t.reasons.map((r) => atRiskReasonText(r)).join(' · ')}
+                </p>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 function Blockers({ metrics, byId }: { metrics: Metrics; byId: Map<string, Task> }) {
   if (metrics.blockers.length === 0) return null;
 

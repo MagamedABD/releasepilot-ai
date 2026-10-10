@@ -165,3 +165,91 @@ export function deliveryHistory(facts: ReleaseFact[]): DeliveryHistory {
     records,
   };
 }
+
+// ── Повторяющиеся причины (FR-37) ───────────────────────────────────────────
+
+/** Что система думала о релизе в один из дней — из ежедневного снимка. */
+export type ReasonObservation = {
+  releaseId: string;
+  /** Коды причин риска, стоявших в этот день. */
+  codes: string[];
+  /** Команды, названные перегруженными в этот день. */
+  teams: string[];
+};
+
+export type RecurringCause = {
+  code: string;
+  /** В скольких релизах причина встречалась хотя бы в одном снимке. */
+  releases: number;
+  /** В скольких из них релиз в итоге опоздал. */
+  lateReleases: number;
+  /** Сколько снимков — то есть дней — причина стояла суммарно. */
+  days: number;
+};
+
+export type ChronicBottleneck = { team: string; releases: number; days: number };
+
+export type RecurringCauses = {
+  /** Сколько релизов покрыто снимками. */
+  releases: number;
+  causes: RecurringCause[];
+  bottlenecks: ChronicBottleneck[];
+};
+
+/**
+ * Какие причины риска повторяются из релиза в релиз.
+ *
+ * Считается по снимкам, а не по текущему состоянию: у выпущенного релиза
+ * блокеры сняты и загрузка обнулена, и пересчёт «сейчас» показал бы
+ * гладкое прошлое, которого не было.
+ *
+ * Порядок — по числу релизов, а не дней. Причина, простоявшая сорок дней
+ * в одном релизе, — беда одного релиза; причина, всплывшая в пяти, —
+ * свойство процесса, и именно о ней спрашивает требование. Дни разводят
+ * равных: при одинаковом числе релизов выше та, что держалась дольше.
+ *
+ * Опоздавшие считаются отдельно и только среди выпущенных: у идущего
+ * релиза исхода ещё нет, и записать его в «не опоздал» значило бы
+ * занизить связь причины с задержкой.
+ */
+export function recurringCauses(
+  observations: readonly ReasonObservation[],
+  lateReleaseIds: ReadonlySet<string>,
+): RecurringCauses {
+  const causes = new Map<string, { releases: Set<string>; days: number }>();
+  const teams = new Map<string, { releases: Set<string>; days: number }>();
+  const covered = new Set<string>();
+
+  const bump = (map: typeof causes, key: string, releaseId: string) => {
+    const entry = map.get(key) ?? { releases: new Set<string>(), days: 0 };
+    entry.releases.add(releaseId);
+    entry.days += 1;
+    map.set(key, entry);
+  };
+
+  for (const o of observations) {
+    covered.add(o.releaseId);
+    // Код может прийти в снимке дважды (фактор и правило по одной команде) —
+    // день считается один раз.
+    for (const code of new Set(o.codes)) bump(causes, code, o.releaseId);
+    for (const team of new Set(o.teams)) bump(teams, team, o.releaseId);
+  }
+
+  const order = (a: { releases: number; days: number }, b: { releases: number; days: number }) =>
+    b.releases - a.releases || b.days - a.days;
+
+  return {
+    releases: covered.size,
+    causes: [...causes]
+      .map(([code, v]) => ({
+        code,
+        releases: v.releases.size,
+        lateReleases: [...v.releases].filter((id) => lateReleaseIds.has(id)).length,
+        days: v.days,
+      }))
+      .sort((a, b) => order(a, b) || a.code.localeCompare(b.code)),
+    bottlenecks: [...teams]
+      .map(([team, v]) => ({ team, releases: v.releases.size, days: v.days }))
+      .sort((a, b) => order(a, b) || a.team.localeCompare(b.team)),
+  };
+}
