@@ -31,32 +31,46 @@ export async function sendEmail(to: readonly string[], email: Email): Promise<Se
   }
   if (to.length === 0) return { ok: false, reason: 'no_recipients' };
 
-  try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${serverEnv.RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: serverEnv.DIGEST_FROM_EMAIL,
-        // Получатели — в скрытой копии: дайджест уходит всем менеджерам
-        // организации, и раскрывать их адреса друг другу незачем.
-        to: serverEnv.DIGEST_FROM_EMAIL,
-        bcc: to,
-        subject: email.subject,
-        text: email.text,
-        html: email.html,
-      }),
-    });
-    if (!res.ok) {
-      // Тело ответа сервиса наружу не идёт (NFR-08) — только в лог.
-      console.error(`[notify] Resend ответил ${res.status}: ${(await res.text()).slice(0, 300)}`);
-      return { ok: false, reason: 'failed', detail: String(res.status) };
+  /*
+    Каждому получателю — своё письмо, а не одно со списком адресов.
+
+    Так адреса менеджеров не раскрываются друг другу, и так же работает
+    тестовый режим Resend: без подтверждённого домена сервис принимает
+    письма только на адрес владельца аккаунта, и одно письмо на нескольких
+    получателей он отклонил бы целиком — вместе с тем единственным, кому
+    доставить можно.
+  */
+  let sent = 0;
+  let lastStatus: string | undefined;
+  for (const recipient of to) {
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${serverEnv.RESEND_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: serverEnv.DIGEST_FROM_EMAIL,
+          to: [recipient],
+          subject: email.subject,
+          text: email.text,
+          html: email.html,
+        }),
+      });
+      if (res.ok) {
+        sent += 1;
+      } else {
+        lastStatus = String(res.status);
+        // Тело ответа сервиса наружу не идёт (NFR-08) — только в лог.
+        console.error(`[notify] Resend ответил ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      }
+    } catch (e) {
+      console.error(`[notify] нет связи с Resend: ${e instanceof Error ? e.message : e}`);
     }
-    return { ok: true, sent: to.length };
-  } catch (e) {
-    console.error(`[notify] нет связи с Resend: ${e instanceof Error ? e.message : e}`);
-    return { ok: false, reason: 'failed' };
   }
+
+  // Успех — если дошло хотя бы одно: частичная доставка не повод считать
+  // рассылку несостоявшейся, а недоставленные видны в логе.
+  return sent > 0 ? { ok: true, sent } : { ok: false, reason: 'failed', detail: lastStatus };
 }
