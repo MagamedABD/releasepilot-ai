@@ -27,6 +27,7 @@ import { DIRECTION_TONE, direction, levelChange, signed } from '@/lib/ui/scenari
 import { RISK_LEVEL } from '@/lib/ui/risk';
 import type { RiskLevel } from '@/domain/types';
 
+import { RichText } from './rich-text';
 import { ApplyButton } from './scenario';
 
 type ProposalDelta = {
@@ -244,9 +245,10 @@ function EntryView({
       );
 
     case 'answer':
-      // Переводы строк сохраняются: ответ построен как «вывод, причины,
-      // что делать», и слитый в абзац он теряет именно эту структуру.
-      return <p className="max-w-prose whitespace-pre-wrap">{entry.text}</p>;
+      // Структура «вывод, причины, что делать» держится на абзацах и
+      // списках — поэтому разметка модели показывается, а не печатается
+      // звёздочками.
+      return <RichText text={entry.text} />;
 
     case 'tool':
       return (
